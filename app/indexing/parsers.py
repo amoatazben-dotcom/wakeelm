@@ -190,7 +190,8 @@ class PDFParser:
         if reader.is_encrypted:
             raise SafeError("INVALID_DOCUMENT")
         return "\n".join(
-            (page.extract_text() or "")[:100000] for page in list(reader.pages)[:100]
+            (page.extract_text() or "")[:100000]
+            for page in __import__("itertools").islice(reader.pages, 100)
         ), "extracted"
 
 

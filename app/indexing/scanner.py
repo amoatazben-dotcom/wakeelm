@@ -99,6 +99,12 @@ class ProjectScanner:
                     )
                     add("package_managers", "npm", path)
                     add("build_systems", "Node", path)
+                    if path == "package.json" and isinstance(data.get("scripts"), dict):
+                        manifest["validation_scripts"] = [
+                            name
+                            for name in ("test", "lint", "build")
+                            if isinstance(data["scripts"].get(name), str)
+                        ]
                     if isinstance(data.get("main"), str):
                         add("entrypoints", str(PurePosixPath(path).parent / data["main"]), path)
                 if filename == "pyproject.toml":

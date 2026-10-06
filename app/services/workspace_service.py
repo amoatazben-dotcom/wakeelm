@@ -101,8 +101,28 @@ class WorkspaceService:
             await self.session.delete(workspace)
             raise
 
-    async def index(self, workspace_id):
+    async def idle(self, workspace_id, agent_job_id=None):
+        from app.agent.approvals import TERMINAL
+        from app.db.models.agent import AgentJob, WorkspaceChangeSet
+
+        query = select(AgentJob.id).where(
+            AgentJob.workspace_id == workspace_id, AgentJob.status.not_in(TERMINAL)
+        )
+        if agent_job_id:
+            query = query.where(AgentJob.id != agent_job_id)
+        if await self.session.scalar(query):
+            raise SafeError("WORKSPACE_BUSY")
+        changes = select(WorkspaceChangeSet.id).where(
+            WorkspaceChangeSet.workspace_id == workspace_id, WorkspaceChangeSet.status == "APPLYING"
+        )
+        if agent_job_id:
+            changes = changes.where(WorkspaceChangeSet.job_id != agent_job_id)
+        if await self.session.scalar(changes):
+            raise SafeError("RECOVERY_REQUIRES_REVIEW")
+
+    async def index(self, workspace_id, agent_job_id=None):
         workspace = await self.owned(workspace_id, True)
+        await self.idle(workspace_id, agent_job_id)
         workspace.status = "INDEXING"
         paths = await asyncio.to_thread(self.storage.list_files, self.user_id, workspace.id)
 
@@ -245,7 +265,7 @@ class WorkspaceService:
 
     async def delete(self, workspace_id):
         workspace = await self.owned(workspace_id, True)
-        # Jobs are introduced in Stage 4; refuse deletion during active work.
+        await self.idle(workspace_id)
         await asyncio.to_thread(self.storage.delete_workspace, self.user_id, workspace_id)
         workspace.status = "DELETED"
         self.event(workspace, "WORKSPACE_DELETED")

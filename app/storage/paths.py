@@ -92,3 +92,28 @@ def atomic_write(root, relative, data, create=True):
         except FileNotFoundError:
             pass
         os.close(parent)
+
+
+def exists_regular(root, relative):
+    """Check absence without following symlinks, including absent parent directories."""
+    parts = safe_relative(relative).split("/")
+    fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for part in parts[:-1]:
+            try:
+                next_fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            except FileNotFoundError:
+                return False
+            os.close(fd)
+            fd = next_fd
+        try:
+            info = os.stat(parts[-1], dir_fd=fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return False
+        if not stat.S_ISREG(info.st_mode):
+            raise SafeError("PATH_DENIED")
+        return True
+    except OSError:
+        raise SafeError("PATH_DENIED") from None
+    finally:
+        os.close(fd)
