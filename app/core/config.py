@@ -24,6 +24,28 @@ class Settings(BaseSettings):
     max_response_bytes: int = Field(default=2_000_000, ge=1024, le=10_000_000)
     max_models: int = Field(default=1000, ge=1, le=10000)
 
+    workspace_storage_root: str = "storage/workspaces"
+    max_upload_size_mb: int = Field(default=20, ge=1, le=100)
+    max_archive_size_mb: int = Field(default=20, ge=1, le=100)
+    max_extracted_size_mb: int = Field(default=100, ge=1, le=500)
+    max_archive_files: int = Field(default=2000, ge=1, le=10000)
+    max_single_file_size_mb: int = Field(default=5, ge=1, le=50)
+    max_project_files: int = Field(default=2000, ge=1, le=10000)
+    context_max_tokens: int = Field(default=6000, ge=256, le=32000)
+    context_safety_margin: float = Field(default=0.2, ge=0.1, le=0.5)
+    max_agent_steps: int = Field(default=12, ge=1, le=30)
+    max_tool_calls: int = Field(default=20, ge=1, le=60)
+    max_replans: int = Field(default=2, ge=0, le=5)
+    max_repair_attempts: int = Field(default=1, ge=0, le=3)
+    max_task_duration: int = Field(default=300, ge=10, le=1800)
+    max_command_output_bytes: int = Field(default=32000, ge=1024, le=1000000)
+    command_timeout: int = Field(default=60, ge=1, le=300)
+    sandbox_backend: Literal["disabled", "docker"] = "disabled"
+    sandbox_image: str = "wakeelm-validation:local"
+    require_edit_approval: bool = False
+    max_patch_files: int = Field(default=10, ge=1, le=30)
+    approval_ttl_seconds: int = Field(default=600, ge=30, le=3600)
+
     @field_validator("master_encryption_key")
     @classmethod
     def valid_key(cls, value):

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 name = "telegram-ai-agent"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "aiogram>=3.15,<4", "pydantic-settings>=2.6,<3", "sqlalchemy[asyncio]>=2.0,<3", "asyncpg>=0.30,<1", "alembic>=1.14,<2", "redis>=5,<7", "httpx>=0.28,<1", "cryptography>=44", "structlog>=24", "aiohttp>=3.10,<4"]
+dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "aiogram>=3.15,<4", "pydantic-settings>=2.6,<3", "sqlalchemy[asyncio]>=2.0,<3", "asyncpg>=0.30,<1", "alembic>=1.14,<2", "redis>=5,<7", "httpx>=0.28,<1", "cryptography>=44", "structlog>=24", "aiohttp>=3.10,<4", "pathspec>=0.12,<1", "charset-normalizer>=3,<4", "pypdf>=5,<7", "openpyxl>=3.1,<4", "defusedxml>=0.7,<1", "unidiff>=0.7,<1"]
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-asyncio>=0.25", "aiosqlite>=0.20", "ruff>=0.9", "fakeredis[lua]>=2.26"]
 [tool.setuptools.packages.find]
