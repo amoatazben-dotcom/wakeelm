@@ -65,7 +65,7 @@ async def screen(event, target, user, state, session, providers, models, **data)
                 "all",
             ]
         ]
-        rows += [[("model.refresh", "provider:checkall")], [("common.back", "menu:home")]]
+        rows += [[("model.refresh", "models:refresh:0:0")], [("common.back", "menu:home")]]
         await say(event, tr(lang, "menu.models"), keyboard(lang, rows))
     elif target == "chat":
         await state.set_state(Chat.active)

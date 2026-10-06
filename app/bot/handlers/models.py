@@ -11,6 +11,14 @@ from app.core.i18n import tr
 async def model_list(event, user, models):
     _, filter, raw_page, raw_provider = event.data.split(":")
     page, provider_id = int(raw_page), int(raw_provider)
+    if filter == "refresh":
+        for provider in (await models.providers.list())[:5]:
+            if provider.status != "DISABLED":
+                try:
+                    await models.providers.discover(provider.id)
+                except SafeError:
+                    pass
+        filter = "all"
     items, total = await models.page(page, filter, provider_id or None)
     buttons = [
         [

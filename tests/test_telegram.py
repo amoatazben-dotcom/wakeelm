@@ -115,6 +115,7 @@ async def test_telegram_acceptance_flow(stack, monkeypatch):
         assert "top-secret-api-token" not in provider.encrypted_api_token
         model_id = model.id
         provider_id = provider.id
+    await send(callback="models:refresh:0:0")
     await send(callback="models:all:0:0")
     await send(callback=f"model:view:{model_id}")
     await send(callback=f"model:activate:{model_id}")
