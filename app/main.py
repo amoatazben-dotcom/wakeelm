@@ -63,7 +63,7 @@ def create_app(settings=None, start_bot=True):
         finally:
             if task:
                 task.cancel()
-                with suppress(asyncio.CancelledError):
+                with suppress(asyncio.CancelledError, Exception):
                     await task
             await bot.session.close()
             await redis.aclose()
@@ -103,7 +103,7 @@ def create_app(settings=None, start_bot=True):
         except ValueError:
             raise HTTPException(400) from None
         # Webhook retry deduplication and processing lock across replicas.
-        key = f"update:{update.update_id}"
+        key = f"telegram:{app.state.bot.id}:update:{update.update_id}"
         if not await app.state.redis.set(key, "processing", nx=True, ex=300):
             value = await app.state.redis.get(key)
             if value == b"done":

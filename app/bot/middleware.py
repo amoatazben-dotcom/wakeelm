@@ -28,29 +28,30 @@ class ServicesMiddleware(BaseMiddleware):
         if isinstance(event, CallbackQuery):
             await event.answer()
         try:
-            await self.limits.cooldown(f"bot:{sender.id}", 1)
             async with self.sessions() as session:
-                async with session.begin():
-                    user = await ensure_user(session, sender, lang)
-                    lang = user.language
-                    if not user.is_active:
-                        raise SafeError("INACTIVE")
-                    providers = ProviderService(
-                        session,
-                        user.id,
-                        self.secrets,
-                        self.http,
-                        self.limits,
-                        self.settings.max_models,
-                    )
-                    data.update(
-                        session=session,
-                        user=user,
-                        providers=providers,
-                        models=ModelService(providers),
-                        secrets=self.secrets,
-                    )
-                    return await handler(event, data)
+                user = await ensure_user(session, sender, lang)
+                lang = user.language
+                await self.limits.cooldown(f"bot:{sender.id}", 1)
+                if not user.is_active:
+                    raise SafeError("INACTIVE")
+                providers = ProviderService(
+                    session,
+                    user.id,
+                    self.secrets,
+                    self.http,
+                    self.limits,
+                    self.settings.max_models,
+                )
+                data.update(
+                    session=session,
+                    user=user,
+                    providers=providers,
+                    models=ModelService(providers),
+                    secrets=self.secrets,
+                )
+                result = await handler(event, data)
+                await session.commit()
+                return result
         except SafeError as error:
             await message.answer(tr(lang, "error." + error.code))
         except Exception:

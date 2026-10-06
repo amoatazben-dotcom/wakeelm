@@ -1,11 +1,12 @@
 import re
 
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from app.providers.url import BaseURLResolver
 
 
 class ProviderInput(BaseModel):
+    model_config = ConfigDict(hide_input_in_errors=True)
     name: str = Field(min_length=1, max_length=100)
     base_url: str = Field(max_length=2048)
     api_token: SecretStr

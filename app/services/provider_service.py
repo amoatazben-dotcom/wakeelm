@@ -36,6 +36,32 @@ class ProviderService:
         audit(self.session, self.user_id, "PROVIDER_CREATED", "provider", provider.id)
         return provider
 
+    async def update(self, provider_id, data):
+        provider = await self.owned.provider(provider_id, for_update=True)
+        await public_addresses(data.base_url)
+        kind = ProviderRegistry.detect(data.base_url, data.provider_type)
+        await self.invalidate(provider.id)
+        if provider.base_url != data.base_url or provider.provider_type != kind:
+            await self.session.execute(delete(Model).where(Model.provider_id == provider.id))
+        else:
+            for model in await self.session.scalars(
+                select(Model).where(Model.provider_id == provider.id)
+            ):
+                model.status, model.is_available, model.last_checked_at = "UNTESTED", False, None
+                caps = dict(model.capabilities_json)
+                for key, value in caps.items():
+                    if value.get("source") == "TESTED":
+                        caps[key] = {"state": "UNKNOWN", "source": "NOT_TESTED"}
+                model.capabilities_json = caps
+        token = data.api_token.get_secret_value()
+        provider.name, provider.base_url, provider.provider_type = data.name, data.base_url, kind
+        provider.encrypted_api_token = self.secrets.encrypt(token)
+        provider.extra_headers_encrypted = self.secrets.encrypt_headers(data.headers)
+        provider.token_hint = token_hint(token)
+        provider.api_base_url, provider.status, provider.last_checked_at = None, "UNKNOWN", None
+        audit(self.session, self.user_id, "PROVIDER_UPDATED", "provider", provider.id)
+        return provider
+
     def adapter(self, provider):
         adapter = ProviderRegistry.resolve(
             provider.provider_type,
@@ -55,7 +81,7 @@ class ProviderService:
         )
 
     async def discover(self, provider_id):
-        provider = await self.owned.provider(provider_id)
+        provider = await self.owned.provider(provider_id, for_update=True)
         if provider.status == "DISABLED":
             raise SafeError("DISABLED")
         await self.limits.cooldown(f"discover:{provider.id}", 15)
@@ -78,6 +104,12 @@ class ProviderService:
                     if model is None:
                         model = Model(provider_id=provider.id, external_model_id=item.external_id)
                         self.session.add(model)
+                    if model.id is not None:
+                        for key, value in model.capabilities_json.items():
+                            if value.get("source") == "TESTED":
+                                item.capabilities[key] = value
+                        if model.status == "UNSUPPORTED":
+                            model.status, model.is_available = "UNTESTED", False
                     (
                         model.display_name,
                         model.capabilities_json,
@@ -134,7 +166,7 @@ class ProviderService:
             await self.session.delete(setting)
 
     async def disable(self, provider_id):
-        provider = await self.owned.provider(provider_id)
+        provider = await self.owned.provider(provider_id, for_update=True)
         provider.status = "DISABLED"
         await self.invalidate(provider.id)
         audit(
@@ -147,7 +179,7 @@ class ProviderService:
         )
 
     async def delete(self, provider_id):
-        provider = await self.owned.provider(provider_id)
+        provider = await self.owned.provider(provider_id, for_update=True)
         await self.invalidate(provider.id)
         await self.session.execute(delete(Model).where(Model.provider_id == provider.id))
         await self.session.delete(provider)
@@ -156,6 +188,6 @@ class ProviderService:
     async def rename(self, provider_id, name):
         if not 1 <= len(name.strip()) <= 100:
             raise SafeError("INVALID_INPUT")
-        provider = await self.owned.provider(provider_id)
+        provider = await self.owned.provider(provider_id, for_update=True)
         provider.name = name.strip()
         audit(self.session, self.user_id, "PROVIDER_UPDATED", "provider", provider.id)

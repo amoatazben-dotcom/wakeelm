@@ -48,7 +48,12 @@ async def public_addresses(url):
             asyncio.get_running_loop().getaddrinfo(host, None, type=socket.SOCK_STREAM), 5
         )
         addresses = {r[4][0] for r in results}
-        if not addresses or any(not ipaddress.ip_address(ip).is_global for ip in addresses):
+        if not addresses or any(
+            not ipaddress.ip_address(ip).is_global
+            or ipaddress.ip_address(ip).is_multicast
+            or ipaddress.ip_address(ip).is_reserved
+            for ip in addresses
+        ):
             raise SafeError("INVALID_URL")
         return addresses
     except (OSError, TimeoutError):

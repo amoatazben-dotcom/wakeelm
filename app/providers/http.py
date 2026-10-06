@@ -41,9 +41,14 @@ class SafeHTTP:
                     connector=connector,
                     timeout=aiohttp.ClientTimeout(total=self.timeout, connect=5, sock_read=15),
                     trust_env=False,
+                    auto_decompress=False,
                 ) as client:
                     async with client.request(
-                        method, url, headers=headers, json=payload, allow_redirects=False
+                        method,
+                        url,
+                        headers={"Accept-Encoding": "identity", **headers},
+                        json=payload,
+                        allow_redirects=False,
                     ) as response:
                         if response.status >= 300:
                             code = {
@@ -53,6 +58,11 @@ class SafeHTTP:
                                 429: "RATE_LIMITED",
                             }.get(response.status, "OFFLINE")
                             raise SafeError(code, response.status)
+                        if (
+                            response.headers.get("Content-Encoding", "identity").lower()
+                            != "identity"
+                        ):
+                            raise SafeError("INVALID_RESPONSE")
                         content = bytearray()
                         async for chunk in response.content.iter_chunked(65536):
                             content.extend(chunk)
@@ -63,7 +73,7 @@ class SafeHTTP:
                             if not isinstance(result, dict):
                                 raise ValueError()
                             return result
-                        except (ValueError, UnicodeError):
+                        except (ValueError, UnicodeError, RecursionError):
                             raise SafeError("INVALID_RESPONSE") from None
         except TimeoutError:
             raise SafeError("TIMEOUT") from None

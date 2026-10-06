@@ -1,7 +1,9 @@
 import time
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.core.exceptions import SafeError
 from app.db.base import now
@@ -23,53 +25,46 @@ class ModelService:
             raise SafeError("INVALID_INPUT")
         if provider_id is not None:
             await self.owned.provider(provider_id)
-        rows = list(
-            await self.session.scalars(
-                select(Model)
-                .join(Provider)
-                .where(Provider.user_id == self.user_id, Provider.status != "DISABLED")
-                .order_by(Model.id)
-            )
+        query = (
+            select(Model)
+            .join(Provider)
+            .where(Provider.user_id == self.user_id, Provider.status != "DISABLED")
         )
         if provider_id is not None:
-            rows = [m for m in rows if m.provider_id == provider_id]
+            query = query.where(Model.provider_id == provider_id)
+        pricing = Model.pricing_json["classification"].as_string()
         if filter == "free":
-            rows = [
-                m
-                for m in rows
-                if m.pricing_json.get("classification") in {"FREE_VERIFIED", "FREE_REPORTED"}
-            ]
+            query = query.where(pricing.in_(["FREE_VERIFIED", "FREE_REPORTED"]))
         elif filter == "working":
-            rows = [m for m in rows if m.is_available]
+            query = query.where(Model.is_available.is_(True))
         elif filter in {"tool_calling", "vision", "reasoning", "coding"}:
-            rows = [
-                m for m in rows if m.capabilities_json.get(filter, {}).get("state") == "SUPPORTED"
-            ]
+            query = query.where(Model.capabilities_json[filter]["state"].as_string() == "SUPPORTED")
         elif filter in {"paid", "unknown"}:
-            rows = [
-                m
-                for m in rows
-                if m.pricing_json.get("classification", "UNKNOWN")
-                == {"paid": "PAID", "unknown": "UNKNOWN"}[filter]
-            ]
+            query = query.where(
+                func.coalesce(pricing, "UNKNOWN") == {"paid": "PAID", "unknown": "UNKNOWN"}[filter]
+            )
         elif filter != "all":
             raise SafeError("INVALID_INPUT")
-        return rows[page * 10 : page * 10 + 10], len(rows)
+        total = await self.session.scalar(select(func.count()).select_from(query.subquery()))
+        rows = list(
+            await self.session.scalars(query.order_by(Model.id).offset(page * 10).limit(10))
+        )
+        return rows, total
 
     async def activate(self, model_id):
         model = await self.owned.model(model_id)
         provider = await self.owned.provider(model.provider_id)
         if provider.status == "DISABLED" or model.status == "UNSUPPORTED":
             raise SafeError("DISABLED")
-        setting = await self.session.scalar(
-            select(UserSetting).where(
-                UserSetting.user_id == self.user_id, UserSetting.key == "active_model"
-            )
+        insert = pg_insert if self.session.bind.dialect.name == "postgresql" else sqlite_insert
+        value = {"active_provider_id": provider.id, "active_model_id": model.id}
+        statement = insert(UserSetting).values(
+            user_id=self.user_id, key="active_model", value_json=value
         )
-        if setting is None:
-            setting = UserSetting(user_id=self.user_id, key="active_model")
-            self.session.add(setting)
-        setting.value_json = {"active_provider_id": provider.id, "active_model_id": model.id}
+        statement = statement.on_conflict_do_update(
+            index_elements=["user_id", "key"], set_={"value_json": value, "updated_at": now()}
+        ).returning(UserSetting)
+        await self.session.scalar(statement.execution_options(populate_existing=True))
         audit(self.session, self.user_id, "ACTIVE_MODEL_CHANGED", "model", model.id)
 
     async def completion(self, model, text, test=False):

@@ -11,7 +11,10 @@ class OpenAICompatibleAdapter(AIProviderAdapter):
         self, base_url, token, headers, http, max_models=1000, provider_type="OPENAI_COMPATIBLE"
     ):
         self.base_url = BaseURLResolver.normalize(base_url)
-        self.headers = {"Authorization": "Bearer " + token, **headers}
+        self.headers = {
+            "authorization": "Bearer " + token,
+            **{k.lower(): v for k, v in headers.items()},
+        }
         self.http, self.max_models, self.provider_type = http, max_models, provider_type
         self.api_url = self.base_url
 
@@ -70,11 +73,16 @@ class OpenAICompatibleAdapter(AIProviderAdapter):
             if not isinstance(content, str) or not content:
                 raise ValueError()
             usage = response.get("usage", {})
-            return content, {
-                k: v
-                for k, v in usage.items()
-                if k in {"prompt_tokens", "completion_tokens"} and isinstance(v, int)
-            } if isinstance(usage, dict) else {}
+            safe_usage = (
+                {
+                    k: v
+                    for k, v in usage.items()
+                    if k in {"prompt_tokens", "completion_tokens"} and isinstance(v, int) and v >= 0
+                }
+                if isinstance(usage, dict)
+                else {}
+            )
+            return content, safe_usage
         except (KeyError, IndexError, TypeError, ValueError):
             raise SafeError("INVALID_RESPONSE") from None
 
@@ -86,6 +94,17 @@ class OpenRouterAdapter(OpenAICompatibleAdapter):
         if isinstance(price, dict):
             try:
                 values = {k: Decimal(str(price[k])) for k in ("prompt", "completion")}
+                for key in (
+                    "request",
+                    "image",
+                    "web_search",
+                    "internal_reasoning",
+                    "input_cache_read",
+                    "input_cache_write",
+                    "audio",
+                ):
+                    if key in price:
+                        values[key] = Decimal(str(price[key]))
                 if all(v.is_finite() and v >= 0 for v in values.values()):
                     model.pricing = {
                         "classification": "FREE_REPORTED"

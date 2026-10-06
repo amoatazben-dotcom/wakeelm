@@ -1,12 +1,12 @@
 from typing import Literal
 
 from cryptography.fernet import Fernet
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
     app_name: str = "Telegram AI Agent"
     app_env: str = "development"
     app_host: str = "0.0.0.0"
@@ -20,9 +20,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     public_base_url: str | None = None
     webhook_secret: SecretStr | None = None
-    provider_timeout: float = 30
-    max_response_bytes: int = 2_000_000
-    max_models: int = 1000
+    provider_timeout: float = Field(default=30, gt=0, le=60)
+    max_response_bytes: int = Field(default=2_000_000, ge=1024, le=10_000_000)
+    max_models: int = Field(default=1000, ge=1, le=10000)
 
     @field_validator("master_encryption_key")
     @classmethod
@@ -38,6 +38,11 @@ class Settings(BaseSettings):
             or not self.webhook_secret
         ):
             raise ValueError("Webhook requires HTTPS PUBLIC_BASE_URL and WEBHOOK_SECRET")
+        if self.webhook_secret:
+            import re
+
+            if not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", self.webhook_secret.get_secret_value()):
+                raise ValueError("Invalid webhook secret format")
         return self
 
     @property
