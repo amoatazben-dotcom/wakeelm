@@ -30,6 +30,9 @@ async def ready(request: Request):
     task = getattr(request.app.state, "polling_task", None)
     if task is not None:
         checks["bot"] = not task.done()
+    worker = getattr(request.app.state, "worker_task", None)
+    if worker is not None:
+        checks["agent_worker"] = not worker.done()
     return JSONResponse(
         {"status": "ready" if all(checks.values()) else "not_ready", "checks": checks},
         status_code=200 if all(checks.values()) else 503,

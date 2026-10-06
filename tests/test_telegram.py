@@ -146,3 +146,87 @@ async def test_telegram_acceptance_flow(stack, monkeypatch, tmp_path):
     async with stack.sessions() as fresh:
         assert await fresh.get(Provider, provider_id) is None
     await bot.session.close()
+
+
+async def test_telegram_project_agent_queue_status_cancel(stack, tmp_path):
+    from test_workspaces import project_zip
+
+    from app.db.models.agent import AgentJob
+    from app.schemas.providers import ProviderInput
+    from app.services.model_service import ModelService
+    from app.services.workspace_service import WorkspaceService
+
+    provider = await stack.service.create(
+        ProviderInput(
+            name="Agent provider", base_url="https://example.com/v1", api_token="test-token"
+        )
+    )
+    await stack.service.discover(provider.id)
+    model = await stack.session.scalar(select(Model))
+    await ModelService(stack.service).activate(model.id)
+    settings = Settings(
+        telegram_bot_token="123456:dummy",
+        database_url="sqlite+aiosqlite:///:memory:",
+        redis_url="redis://localhost",
+        master_encryption_key=Fernet.generate_key().decode(),
+        workspace_storage_root=str(tmp_path / "workspaces"),
+        _env_file=None,
+    )
+    workspace = await WorkspaceService(
+        stack.session, stack.user.id, settings, stack.secrets, Limits(stack.redis)
+    ).ingest("project.zip", project_zip({"main.py": "VALUE = 1\n"}))
+    await stack.session.commit()
+    transport = TelegramSession()
+    bot = Bot("123456:dummy", session=transport)
+    dispatcher = create_dispatcher(
+        stack.redis, stack.sessions, stack.secrets, stack.http, Limits(stack.redis), settings
+    )
+    sender = User(id=123, is_bot=False, first_name="Test")
+    index = 0
+
+    async def send(text=None, callback=None):
+        nonlocal index
+        index += 1
+        await stack.redis.delete("limit:bot:123")
+        message = Message(
+            message_id=index,
+            date=datetime.now(timezone.utc),
+            chat=Chat(id=123, type="private"),
+            from_user=sender,
+            text=text,
+        )
+        update = (
+            Update(
+                update_id=index,
+                callback_query=CallbackQuery(
+                    id=str(index),
+                    from_user=sender,
+                    chat_instance="test",
+                    message=message,
+                    data=callback,
+                ),
+            )
+            if callback
+            else Update(update_id=index, message=message)
+        )
+        await dispatcher.feed_update(bot, update)
+        assert "تعذر إكمال" not in transport.messages[-1].text
+
+    await send(callback=f"agent:start:{workspace.id}")
+    assert "اختر وضع" in transport.messages[-1].text
+    await send(callback=f"mode:SUGGEST:{workspace.id}")
+    await send("Change VALUE to 2")
+    async with stack.sessions() as fresh:
+        job = await fresh.scalar(select(AgentJob))
+        ident = job.id
+        assert (
+            job.status == "QUEUED"
+            and job.mode == "SUGGEST"
+            and "Change VALUE" not in job.request_text
+        )
+    await send(callback=f"job:status:{ident}")
+    await send(callback=f"job:cancel:{ident}")
+    async with stack.sessions() as fresh:
+        assert (await fresh.get(AgentJob, ident)).status == "CANCELLED"
+    assert "أُلغيت" in transport.messages[-1].text
+    await bot.session.close()

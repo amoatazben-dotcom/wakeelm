@@ -9,6 +9,7 @@ from aiogram.types import Update
 from fastapi import FastAPI, HTTPException, Request
 from redis.asyncio import Redis
 
+from app.agent.worker import AgentWorker
 from app.api.health import router
 from app.bot.dispatcher import create_dispatcher
 from app.core.config import Settings
@@ -40,8 +41,48 @@ def create_app(settings=None, start_bot=True):
         )
         app.state.dispatcher = dispatcher
         task = None
+        worker_task = None
+
+        async def notify(job):
+            if not job.telegram_chat_id:
+                return
+            from app.core.i18n import tr
+            from app.db.models import User
+
+            async with sessions() as session:
+                user = await session.get(User, job.user_id)
+            if not user or not user.is_active:
+                return
+            from app.bot.keyboards import keyboard
+
+            try:
+                await bot.send_message(
+                    job.telegram_chat_id,
+                    tr(
+                        user.language,
+                        "agent.progress",
+                        ident=job.id,
+                        status=tr(user.language, "agent.state." + job.status),
+                    ),
+                    reply_markup=keyboard(
+                        user.language, [[("agent.refresh", f"job:status:{job.id}")]]
+                    ),
+                )
+            except Exception:
+                pass
+
         try:
             if start_bot:
+                worker = AgentWorker(
+                    sessions,
+                    SecretManager(settings.master_encryption_key.get_secret_value()),
+                    SafeHTTP(settings.provider_timeout, settings.max_response_bytes),
+                    Limits(redis),
+                    settings,
+                    notify,
+                )
+                worker_task = asyncio.create_task(worker.run())
+                app.state.worker_task = worker_task
                 if settings.bot_mode == "polling":
                     await bot.delete_webhook(drop_pending_updates=False)
                     task = asyncio.create_task(
@@ -61,6 +102,10 @@ def create_app(settings=None, start_bot=True):
                     )
             yield
         finally:
+            if worker_task:
+                worker_task.cancel()
+                with suppress(asyncio.CancelledError, Exception):
+                    await worker_task
             if task:
                 task.cancel()
                 with suppress(asyncio.CancelledError, Exception):

@@ -4,6 +4,7 @@ from aiogram.types import CallbackQuery, Message
 
 from app.core.exceptions import SafeError
 from app.core.i18n import tr
+from app.services.agent_service import AgentService
 from app.services.model_service import ModelService
 from app.services.provider_service import ProviderService
 from app.services.user_service import ensure_user
@@ -53,6 +54,7 @@ class ServicesMiddleware(BaseMiddleware):
                         session, user.id, self.settings, self.secrets, self.limits
                     ),
                 )
+                data["agents"] = AgentService(data["workspaces"], data["models"])
                 result = await handler(event, data)
                 await session.commit()
                 return result
