@@ -86,6 +86,62 @@ class OpenAICompatibleAdapter(AIProviderAdapter):
         except (KeyError, IndexError, TypeError, ValueError):
             raise SafeError("INVALID_RESPONSE") from None
 
+    async def create_agent_completion(self, model, messages, tools=None, max_tokens=1800):
+        import json
+
+        payload = {"model": model, "messages": messages, "max_tokens": max_tokens, "stream": False}
+        if tools:
+            payload.update(tools=tools, tool_choice="auto", parallel_tool_calls=False)
+        response = await self.http.request(
+            "POST", self.api_url + "/chat/completions", self.headers, payload
+        )
+        try:
+            message = response["choices"][0]["message"]
+            calls = message.get("tool_calls")
+            if calls:
+                if not tools or not isinstance(calls, list) or len(calls) > 30:
+                    raise ValueError()
+                steps = []
+                for call in calls:
+                    if call.get("type") != "function":
+                        raise ValueError()
+                    function = call["function"]
+                    steps.append(
+                        {
+                            "tool_name": function["name"].replace("__", "."),
+                            "arguments": json.loads(function["arguments"]),
+                            "reason": "NATIVE_TOOL_CALL",
+                        }
+                    )
+                content = json.dumps(
+                    {
+                        "goal": "Execute observed native tool calls",
+                        "steps": steps,
+                        "risk": "LOW",
+                        "complete": False,
+                    }
+                )
+            else:
+                content = message["content"]
+                if not isinstance(content, str) or not content or len(content) > 250000:
+                    raise ValueError()
+            usage = response.get("usage", {})
+            safe = (
+                {
+                    k: v
+                    for k, v in usage.items()
+                    if k in {"prompt_tokens", "completion_tokens"}
+                    and isinstance(v, int)
+                    and not isinstance(v, bool)
+                    and v >= 0
+                }
+                if isinstance(usage, dict)
+                else {}
+            )
+            return content, safe
+        except (KeyError, IndexError, TypeError, ValueError):
+            raise SafeError("INVALID_RESPONSE") from None
+
 
 class OpenRouterAdapter(OpenAICompatibleAdapter):
     def normalize_model(self, item):

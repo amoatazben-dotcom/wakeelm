@@ -82,6 +82,17 @@ class ModelService:
             model.external_model_id, text, max_tokens=max_tokens
         )
 
+    async def agent_completion(self, model, messages, tools=None):
+        provider = await self.owned.provider(model.provider_id)
+        if provider.status == "DISABLED":
+            raise SafeError("DISABLED")
+        adapter = self.providers.adapter(provider)
+        if provider.api_base_url:
+            adapter.api_url = provider.api_base_url
+        elif not provider.base_url.endswith("/v1"):
+            await adapter.discover_models()
+        return await adapter.create_agent_completion(model.external_model_id, messages, tools=tools)
+
     async def test(self, model_id):
         model = await self.owned.model(model_id)
         await self.providers.limits.cooldown(f"test:user:{self.user_id}", 10)

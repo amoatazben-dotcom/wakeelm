@@ -14,7 +14,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, now
-from app.db.models import projects  # noqa: F401
+from app.db.models import (
+    agent,  # noqa: F401
+    projects,  # noqa: F401
+)
 
 
 class User(TimestampMixin, Base):
