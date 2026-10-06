@@ -3,11 +3,12 @@ from types import SimpleNamespace
 import pytest_asyncio
 from cryptography.fernet import Fernet
 from fakeredis.aioredis import FakeRedis
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.core.limits import Limits
 from app.core.security import SecretManager
 from app.db.base import Base
+from app.db.session import database
 from app.services.provider_service import ProviderService
 from app.services.user_service import ensure_user
 
@@ -38,7 +39,7 @@ async def stack(monkeypatch):
         return {"8.8.8.8"}
 
     monkeypatch.setattr("app.services.provider_service.public_addresses", public)
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    engine, _ = database("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     sessions = async_sessionmaker(engine, expire_on_commit=False)

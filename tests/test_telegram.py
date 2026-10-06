@@ -1,13 +1,14 @@
 from datetime import datetime, timezone
-from types import SimpleNamespace
 
 from aiogram import Bot
 from aiogram.client.session.base import BaseSession
 from aiogram.methods import AnswerCallbackQuery, DeleteMessage, SendMessage
 from aiogram.types import CallbackQuery, Chat, Message, Update, User
+from cryptography.fernet import Fernet
 from sqlalchemy import select
 
 from app.bot.dispatcher import create_dispatcher
+from app.core.config import Settings
 from app.core.limits import Limits
 from app.db.models import Model, Provider, UserSetting
 from app.db.models import User as DBUser
@@ -42,7 +43,7 @@ class TelegramSession(BaseSession):
         yield b""
 
 
-async def test_telegram_acceptance_flow(stack, monkeypatch):
+async def test_telegram_acceptance_flow(stack, monkeypatch, tmp_path):
     async def public(url):
         return {"8.8.8.8"}
 
@@ -56,7 +57,14 @@ async def test_telegram_acceptance_flow(stack, monkeypatch):
         stack.secrets,
         stack.http,
         Limits(stack.redis),
-        SimpleNamespace(bot_default_language="ar", max_models=1000),
+        Settings(
+            telegram_bot_token="123456:dummy",
+            database_url="sqlite+aiosqlite:///:memory:",
+            redis_url="redis://localhost",
+            master_encryption_key=Fernet.generate_key().decode(),
+            workspace_storage_root=str(tmp_path / "workspaces"),
+            _env_file=None,
+        ),
     )
     sender = User(id=123, is_bot=False, first_name="Test", username="tester")
     index = 0

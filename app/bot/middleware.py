@@ -7,6 +7,7 @@ from app.core.i18n import tr
 from app.services.model_service import ModelService
 from app.services.provider_service import ProviderService
 from app.services.user_service import ensure_user
+from app.services.workspace_service import WorkspaceService
 
 
 class ServicesMiddleware(BaseMiddleware):
@@ -48,6 +49,9 @@ class ServicesMiddleware(BaseMiddleware):
                     providers=providers,
                     models=ModelService(providers),
                     secrets=self.secrets,
+                    workspaces=WorkspaceService(
+                        session, user.id, self.settings, self.secrets, self.limits
+                    ),
                 )
                 result = await handler(event, data)
                 await session.commit()

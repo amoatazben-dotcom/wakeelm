@@ -67,7 +67,7 @@ class ModelService:
         await self.session.scalar(statement.execution_options(populate_existing=True))
         audit(self.session, self.user_id, "ACTIVE_MODEL_CHANGED", "model", model.id)
 
-    async def completion(self, model, text, test=False):
+    async def completion(self, model, text, test=False, max_tokens=256):
         provider = await self.owned.provider(model.provider_id)
         if provider.status == "DISABLED":
             raise SafeError("DISABLED")
@@ -78,7 +78,9 @@ class ModelService:
             await adapter.discover_models()
         if test:
             return await adapter.test_model(model.external_model_id)
-        return await adapter.create_chat_completion(model.external_model_id, text)
+        return await adapter.create_chat_completion(
+            model.external_model_id, text, max_tokens=max_tokens
+        )
 
     async def test(self, model_id):
         model = await self.owned.model(model_id)
@@ -111,6 +113,20 @@ class ModelService:
         )
         audit(self.session, self.user_id, "MODEL_TESTED", "model", model.id, status=model.status)
         return error
+
+    async def active(self):
+        setting = await self.session.scalar(
+            select(UserSetting).where(
+                UserSetting.user_id == self.user_id, UserSetting.key == "active_model"
+            )
+        )
+        if setting is None:
+            raise SafeError("NO_ACTIVE_MODEL")
+        model = await self.owned.model(setting.value_json["active_model_id"])
+        provider = await self.owned.provider(model.provider_id)
+        if provider.status == "DISABLED" or model.status == "UNSUPPORTED":
+            raise SafeError("DISABLED")
+        return model
 
     async def chat(self, text):
         if not text or len(text) > 16000:

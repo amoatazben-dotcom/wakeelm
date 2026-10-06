@@ -67,6 +67,13 @@ async def screen(event, target, user, state, session, providers, models, **data)
         ]
         rows += [[("model.refresh", "models:refresh:0:0")], [("common.back", "menu:home")]]
         await say(event, tr(lang, "menu.models"), keyboard(lang, rows))
+    elif target in {"files", "projects"}:
+        from app.bot.handlers.workspaces import files_menu, workspace_list
+
+        if target == "files":
+            await files_menu(event, user)
+        else:
+            await workspace_list(event, user, data["workspaces"])
     elif target == "chat":
         await state.set_state(Chat.active)
         await say(event, tr(lang, "chat.ready"), back(lang))
