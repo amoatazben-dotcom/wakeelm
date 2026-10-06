@@ -9,6 +9,7 @@ from app.core.exceptions import SafeError
 from app.db.base import now
 from app.db.models.projects import (
     ProjectChunk,
+    ProjectEmbedding,
     ProjectFile,
     ProjectManifest,
     ProjectSymbol,
@@ -109,6 +110,13 @@ class WorkspaceService:
             return self.storage.read_file(self.user_id, workspace.id, path)
 
         rules = await asyncio.to_thread(IgnoreRules, paths, reader)
+        file_ids = select(ProjectFile.id).where(ProjectFile.workspace_id == workspace.id)
+        chunk_ids = select(ProjectChunk.id).where(ProjectChunk.file_id.in_(file_ids))
+        await self.session.execute(
+            delete(ProjectEmbedding).where(ProjectEmbedding.chunk_id.in_(chunk_ids))
+        )
+        await self.session.execute(delete(ProjectChunk).where(ProjectChunk.file_id.in_(file_ids)))
+        await self.session.execute(delete(ProjectSymbol).where(ProjectSymbol.file_id.in_(file_ids)))
         await self.session.execute(
             delete(ProjectFile).where(ProjectFile.workspace_id == workspace.id)
         )
