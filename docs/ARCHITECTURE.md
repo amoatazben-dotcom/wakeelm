@@ -15,3 +15,8 @@ Polling uses one replica/one uvicorn process and serial update handling. Webhook
 Future conversations/messages/projects/jobs/tool calls/approvals/MCP tables are intentionally deferred. Add them through new migrations and services, keeping the existing gateway and ownership boundary.
 
 Translations live in `app/locales/ar.json` and `en.json`, with matching keys. Static UI strings use `tr()`. Provider/model IDs, capability identifiers and audit action identifiers remain technical values. Remote AI responses are displayed as plain text, split to Telegram limits.
+
+
+## Stages 3/4
+
+Storage → parsers/scanner → encrypted chunks/symbols/manifest → exact/optional semantic search → bounded ContextEngine. Project detail routes connect to the durable AgentJob queue. AgentWorker → Planner → ToolRegistry/Policy → owned workspace reads/patches or Approval pause → isolated validator → persisted verification. Redis separates worker/workspace/edit leases from Telegram FSM locks. New tables are defined in models/projects.py and models/agent.py; Alembic migrations apply them independently. See AGENT_RUNTIME.md for recovery and cancellation. No AI tool accesses GitHub or deploys Railway.

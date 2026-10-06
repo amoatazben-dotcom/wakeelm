@@ -35,4 +35,7 @@ jobs:
       - run: uv run --frozen ruff format --check app tests alembic
       - run: uv run --frozen alembic upgrade head
       - run: uv run --frozen alembic check
+      - run: docker build -f docker/validation.Dockerfile -t wakeelm-validation:ci .
       - run: uv run --frozen pytest -q
+        env:
+          TEST_SANDBOX_IMAGE: wakeelm-validation:ci

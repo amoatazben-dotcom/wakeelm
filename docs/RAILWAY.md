@@ -19,8 +19,11 @@ Required:
 
 Optional: `APP_NAME`, `APP_ENV`, `APP_HOST`, `APP_PORT`, `BOT_MODE` (polling default), `BOT_DEFAULT_LANGUAGE` (ar default), `LOG_LEVEL`, `PROVIDER_TIMEOUT`, `MAX_RESPONSE_BYTES`, `MAX_MODELS`. Railway supplies `PORT`; it wins over `APP_PORT`.
 
-Webhook: set `BOT_MODE=webhook`, `PUBLIC_BASE_URL=https://your-domain`, and a random `WEBHOOK_SECRET` (Telegram-compatible characters, 1–256 characters). Startup registers `/telegram/webhook`; only this path receives updates. Multiple replicas must share PostgreSQL, Redis and the encryption key. Public ingress must allow Telegram and the secret header. Handler work is inline; for high-volume/slow providers, add a durable worker before increasing throughput.
+Webhook: set `BOT_MODE=webhook`, `PUBLIC_BASE_URL=https://your-domain`, and a random `WEBHOOK_SECRET` (Telegram-compatible characters, 1–256 characters). Startup registers `/telegram/webhook`; only this path receives updates. Multiple replicas must share PostgreSQL, Redis and the encryption key. Public ingress must allow Telegram and the secret header. Agent jobs use a durable SQL queue/background worker; ordinary provider/chat handlers remain inline. Use one app replica/uvicorn worker with a private persistent workspace volume.
 
-For CLI deployment from this directory: `railway up`. Verify the final deployment status and dependency readiness before claiming live deployment. This workspace had no Railway identity or Telegram/provider production credentials configured; no live Railway deployment was performed.
+For CLI deployment from this directory: `railway up`. Verify the final deployment status and dependency readiness before claiming live deployment. The user explicitly postponed all Railway deployments until construction of every requested stage finishes; no deployment was performed.
 
 To run migrations manually in an already-linked service: `railway run alembic upgrade head` with the intended environment/service selected. Back up the production database before future schema changes. The initial downgrade removes the seven stage tables and is for disposable development databases only.
+
+
+Stage 3/4: attach a persistent private volume and set WORKSPACE_STORAGE_ROOT to its mounted directory (e.g. /data/workspaces). Preserve MASTER_ENCRYPTION_KEY for provider tokens, project chunks, plans, diffs and snapshots. Keep SANDBOX_BACKEND=disabled on a normal Railway app until an authenticated external isolated runner is designed; there is no Docker daemon there and no host fallback. New defaults are listed in .env.example. The migrations add seven workspace tables and seven agent tables. Live acceptance and Railway health verification are pending the user's deployment milestone and production credentials.

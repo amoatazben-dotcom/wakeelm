@@ -1,6 +1,6 @@
-# Telegram AI Agent — Stages 1 & 2
+# Telegram AI Agent — Stages 1–4
 
-Async Python backend with FastAPI, aiogram 3, PostgreSQL, Redis and a universal OpenAI-compatible gateway. Arabic is the default; English is persisted per user. This implements provider onboarding, discovery, optional model testing, active model selection and independent single-turn chat. Autonomous coding, shell execution, repository writes and MCP execution are outside this stage.
+Async Python backend with FastAPI, aiogram 3, PostgreSQL, Redis and a universal OpenAI-compatible gateway. Arabic is the default; English is persisted per user. Provider onboarding, discovery, model selection and chat are joined by secure project uploads/indexing/search/context and a bounded coding agent with patches, diffs, approvals, rollback and container validation. The bot does not push repositories, deploy applications or execute MCP.
 
 ## Local setup
 
@@ -25,7 +25,7 @@ sh scripts/start.sh
 
 Endpoints: `/health` (liveness), `/ready` (dependency readiness). Commands: `/start`, `/help`, `/settings`, `/providers`, `/models`, `/cancel`. Interact in a private chat only.
 
-Menus: new chat, API providers, models, settings and the latest 20 audit entries are functional. Files, projects, tools/MCP and the usage dashboard explicitly show “coming later”. Usage token counts are safely logged when supplied by the provider; there is no usage billing dashboard.
+Menus: new chat, API providers, models, settings and the latest 20 audit entries are functional. Files/projects and intelligent tasks are implemented; tools/MCP and the usage billing dashboard remain deferred. Usage token counts are safely logged when supplied by the provider; there is no usage billing dashboard.
 
 ## Checks
 
@@ -45,3 +45,12 @@ TEST_REDIS_URL=redis://127.0.0.1:56379/0 pytest -q
 Use a disposable database **with migrations already applied** and a disposable Redis for this command. Integration tests create their own users and clean up provider/model records; audit records remain for inspection.
 
 See [architecture](docs/ARCHITECTURE.md), [providers](docs/PROVIDERS.md), [security](docs/SECURITY.md), [Railway](docs/RAILWAY.md) and [implementation report](docs/IMPLEMENTATION_REPORT.md).
+
+
+## Projects and coding tasks
+
+Upload text/source/config, PDF, DOCX, XLSX or bounded ZIP/TAR/GZ project archives. Browse/search indexed files, ask grounded questions and choose READ_ONLY, SUGGEST or WORKSPACE tasks. Small workspace edits are allowed in WORKSPACE; sensitive edits and every command require persisted approval. Jobs run in a background worker and can be cancelled from their status card. Diffs and rollback are available in project change history.
+
+Persist `WORKSPACE_STORAGE_ROOT` on a private volume; defaults/limits are in `.env.example`. Command execution is disabled until an administrator provisions a trusted Docker validator. It never falls back to executing uploaded code on the API host. Railway publication is intentionally deferred until all requested construction stages finish.
+
+See [agent runtime](docs/AGENT_RUNTIME.md), [tool policy](docs/TOOL_SECURITY.md), [approvals](docs/APPROVALS.md), [sandbox](docs/SANDBOX.md), [uploads](docs/FILES_AND_WORKSPACES.md), [indexing](docs/PROJECT_INDEXING.md), [context](docs/CONTEXT_ENGINE.md) and [stage 3/4 report](docs/STAGE_3_4_REPORT.md).

@@ -1,0 +1,7 @@
+# Persisted approvals
+
+Approvals store user/job/step, tool/action, safe argument summary, SHA256 of canonical tool+arguments, risk, PENDING/APPROVED/REJECTED/EXPIRED/CANCELLED state, expiration and decision time. Arguments/patch contents remain in the encrypted job/proposal; summaries contain paths, counts, change IDs and fixed command argv, never provider tokens/raw code.
+
+Before a gated action executes, the policy computes normalized arguments and checks an approved row with identical user/job/step/hash and unexpired timestamp. Otherwise it persists PENDING and WAITING_APPROVAL. Telegram status shows the tool/risk/summary/expiry and approve/reject buttons. Both decisions requery ownership with row locks and require the same waiting job/current step. Guessing another user's UUID, replaying a button, changing arguments, using an expired row or using an approval on a later step fails. Reject/expiry stops the job; cancellation cancels pending rows. Approval never authorizes an unregistered action.
+
+Default expiry is 600 seconds. Validation commands always need approval; sensitive patches/deletion/rollback do too. `REQUIRE_EDIT_APPROVAL=true` gates every applied batch. Execution rechecks file hashes even after approval. A repair test is a new step and needs a new approval. Do not treat Telegram button delivery as proof of authorization; the SQL and policy checks are authoritative.

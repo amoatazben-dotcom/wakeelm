@@ -30,7 +30,7 @@ python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 رُفعت المرحلتان إلى main وفرع stage-1-2-foundation-provider-gateway. GitHub Actions لم يبدأ: رسالة GitHub هي “The job was not started because your account is locked due to a billing issue.” يلزم معالجة فوترة GitHub لتشغيل CI هناك. نتيجة التحقق المحلي السابقة: 89 اختبارًا ناجحًا، إضافة إلى Ruff وAlembic.
 
-إنشاء مشروع Railway ينتظر اختيار المستخدم لاتصال Railway المقصود؛ الحسابان المتاحان هما Moataz1 وPrimary. بعد اختياره تُنشأ الخدمات، وتُربط متغيرات قواعد البيانات، ويُستكمل التشغيل بعد إضافة أسرار البوت والتشفير.
+اختيار اتصال Railway وتجهيز متغيراته مؤجلان إلى نهاية البناء وفق آخر تعليمات المستخدم. لا يعطل ذلك رفع المراحل إلى GitHub.
 
 ## آخر توجيه من المستخدم
 
