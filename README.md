@@ -60,3 +60,9 @@ See [agent runtime](docs/AGENT_RUNTIME.md), [tool policy](docs/TOOL_SECURITY.md)
 GitHub App is preferred; scoped fine-grained PAT is the fallback. GitHub and MCP menus use private connections and queued discovery/import. Writes are disabled until operator configuration and always require exact approvals. Unknown MCP tools remain disabled until schema/description review. Optional integration settings do not prevent the basic bot from starting.
 
 See [GitHub setup](docs/GITHUB_APP.md), [repository workflow](docs/REPOSITORY_AGENT.md), [Git safety](docs/GIT_SECURITY.md), [MCP](docs/MCP.md), [OAuth](docs/MCP_AUTH.md), [MCP security](docs/MCP_SECURITY.md), [integration profiles](docs/INTEGRATIONS.md), [technology choice](docs/TECHNOLOGY_SELECTION.md) and [stage 5/6 report](docs/STAGE_5_6_REPORT.md). Railway deployment remains deferred by request.
+
+## Stages 7/8 platform
+
+Tenant-scoped model routing and bounded fallback, encrypted memory, role-restricted specialist graphs, durable usage reservations/quotas, shared circuits, feature flags/emergency stops and an OIDC/MFA/RBAC admin API are implemented. The TypeScript/React dashboard supports Arabic RTL and English. Build it with `npm ci --prefix admin-web` and `npm run build --prefix admin-web`; FastAPI serves `/admin-web/`. OIDC is required to access operational data.
+
+See [router](docs/MODEL_ROUTER.md), [specialists](docs/MULTI_AGENT.md), [memory](docs/MEMORY.md), [quotas](docs/QUOTAS.md), [admin](docs/ADMIN_DASHBOARD.md), [backups](docs/BACKUP_RESTORE.md) and [release process](docs/RELEASE_PROCESS.md). Railway deployment remains deferred by instruction; local tests do not assert production readiness. Container scan findings and live deployment/identity gates are tracked in release evidence and the final beta checklist.

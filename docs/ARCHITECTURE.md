@@ -39,3 +39,9 @@ flowchart TD
 ```
 
 No additional language/runtime service was justified. Native GitHub is the sole repository-write authority; MCP cannot expose a parallel GitHub write path.
+
+## Stage 7/8 control plane
+
+Telegram/API → scoped ModelRouter → durable quota reservation → bounded model gateway/circuit → existing approval-gated orchestrator. Specialist DAG and encrypted memory use PostgreSQL alongside jobs, approval/snapshot state, usage ledger, flags/plans and immutable admin audit. Redis carries expiring lease/circuit/rate/session/cache state only. TypeScript admin assets are built once and served by the same Python API; OIDC/MFA, RBAC, origin and CSRF checks run in Python.
+
+Deployable artifact: `Dockerfile` Python 3.13 non-root UID 10001 runtime + static React assets, trusted Git/PostgreSQL clients. Node 24 is only a build stage. Private PostgreSQL, Redis and persistent workspace volume are required. No Rust, Go, independent integration-node, external telemetry backend or object store has been deployed. Shared worker lease coordinates replicas; migration advisory lock protects the dedicated predeploy step. Production validator remains an isolated external/runtime prerequisite; never mount a host Docker socket into untrusted workloads.

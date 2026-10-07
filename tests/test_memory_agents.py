@@ -134,3 +134,99 @@ async def test_specialist_real_tool_evidence_persisted_dag_and_no_replay(stack, 
     graph = list(await stack.session.scalars(select(AgentGraphNode)))
     assert len(graph) == 1 and graph[0].status == "COMPLETED"
     assert "main.py" not in graph[0].result_encrypted
+
+
+async def test_real_multi_agent_orchestrator_uses_bounded_graph_and_approved_executor(
+    stack, tmp_path
+):
+    import json
+
+    from test_agent import setup
+    from test_routing import candidates
+
+    from app.agent.orchestrator import AgentOrchestrator
+    from app.db.models.platform import AgentGraphNode
+    from app.routing.preferences import RoutingPreferences
+    from app.services.model_service import ModelService
+
+    rows = await candidates(stack)
+    models = ModelService(stack.service)
+    await models.activate(rows[0].id)
+    await RoutingPreferences(stack.session, stack.user.id).set(agent_mode="MULTI_AGENT")
+    w, _, job = await setup(stack, tmp_path)
+    result = {"status": "COMPLETED", "summary": "Bounded evidence review", "confidence": 0.8}
+    responses = [
+        {"result": result, "tool_requests": []},
+        {
+            "goal": "Read exact project evidence",
+            "steps": [{"tool_name": "workspace.read_file", "arguments": {"path": "main.py"}}],
+            "answer": "Observed VALUE = 1",
+            "complete": True,
+        },
+        {"result": result, "tool_requests": []},
+        {"result": result, "tool_requests": []},
+    ]
+
+    async def request(method, url, headers, payload=None):
+        assert responses
+        return {
+            "choices": [{"message": {"content": json.dumps(responses.pop(0))}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 10},
+        }
+
+    stack.http.request = request
+    completed = await AgentOrchestrator(w, models).run(job.id)
+    assert completed.status == "COMPLETED" and completed.model_requests == 4
+    assert completed.tool_calls_count == 1 and not responses
+    nodes = list(await stack.session.scalars(select(AgentGraphNode)))
+    assert len(nodes) == 4 and all(node.status == "COMPLETED" for node in nodes)
+    assert {node.role for node in nodes} == {
+        "CodeAnalysisAgent",
+        "ImplementationAgent",
+        "TestAgent",
+        "ReviewAgent",
+    }
+
+
+async def test_high_risk_plan_triggers_security_gate_before_any_tool(stack, tmp_path):
+    import json
+
+    from test_agent import setup
+    from test_routing import candidates
+
+    from app.agent.orchestrator import AgentOrchestrator
+    from app.services.model_service import ModelService
+
+    rows = await candidates(stack)
+    models = ModelService(stack.service)
+    await models.activate(rows[0].id)
+    w, _, job = await setup(stack, tmp_path)
+    responses = [
+        {
+            "goal": "Review authentication change",
+            "steps": [],
+            "risk": "HIGH",
+            "answer": "Pending security review",
+        },
+        {
+            "result": {
+                "status": "NEEDS_REVIEW",
+                "summary": "Unverified authorization change",
+                "risks": ["Authorization needs evidence"],
+                "confidence": 0.8,
+            },
+            "tool_requests": [],
+        },
+    ]
+
+    async def request(method, url, headers, payload=None):
+        return {
+            "choices": [{"message": {"content": json.dumps(responses.pop(0))}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 10},
+        }
+
+    stack.http.request = request
+    completed = await AgentOrchestrator(w, models).run(job.id)
+    assert completed.failure_code == "SECURITY_REVIEW_REQUIRED"
+    assert completed.tool_calls_count == 0 and completed.model_requests == 2
+    assert not responses

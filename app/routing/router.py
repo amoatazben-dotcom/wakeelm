@@ -100,7 +100,7 @@ class ModelRouter:
             strong = (
                 sum(capability(model, c) for c in ["reasoning", "coding", "structured_output"]) / 3
             )
-            score = 3 * healthy + 2 * (1 - failure_rate) + float(model.is_available)
+            score = 30 * healthy + 5 * (1 - failure_rate) + float(model.is_available)
             score += fast * request.latency_preference + cheap * request.cost_preference
             policy = request.policy
             if policy == RoutingPolicy.PREFER_FREE:

@@ -37,3 +37,9 @@ Add the optional integration variables from .env.example only when configuring t
 Migration 45e2729dffcb adds GitHub connections/repos/links, MCP servers/credentials/tools/resources, OAuth states and AgentJob kind/encrypted payload. Pre-deploy already runs Alembic. Normal Railway does not provide a Docker daemon; keep SANDBOX_BACKEND=disabled until Stage 7 provisions a trusted external validator. With default GIT_REQUIRE_VALIDATION=true repository publication then remains blocked, as intended.
 
 No Railway project creation, variable mutation, service start or deployment was performed for Stages 5/6. The user postponed deployment until all construction stages finish.
+
+## Deferred Stage 7/8 artifact
+
+Use the root multi-stage Dockerfile (configured in railway.toml). The admin UI is a static build within bot-api, not a second Node service. Predeploy performs serialized Alembic migration; ready checks DB/Redis/worker/bot. Set workspace volume ownership to UID 10001 with private modes before serving uploads. Keep GitHub/MCP writes and risky validation disabled until review and isolated runtime configuration pass.
+
+Before actual deployment provide required core secrets plus HTTPS public/callback URL, OIDC issuer/authorize/token/JWKS/client/audience/bootstrap subjects and a backup runner's separate backup key. Do not put raw values in git or reports. Optional GitHub App/OAuth/webhook and MCP issuer-client settings enable their respective features. This file is a deployment procedure; no Railway service has been started during deferred construction.

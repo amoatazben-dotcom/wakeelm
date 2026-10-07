@@ -1,0 +1,11 @@
+# Bounded specialist execution
+
+The Python control plane remains authoritative. `CoordinatorAgent` schedules structured handoffs; it has no tools. Every result validates status, summary, findings, artifacts, risks, recommended next step, confidence, tool-call count and model ID. The DAG is persisted in `agent_graph_nodes`, with encrypted results and explicit dependency checks. Interrupted handoffs require review and cannot be silently replayed.
+
+MULTI_AGENT performs CodeAnalysis → approved implementation tools → TestAgent → ReviewAgent → final deterministic validation. DEEP adds review; BALANCED retains bounded normal planning. FAST uses the same safe bounded planner and minimal specialization. SecurityReview runs before high-risk plans and again on completion; auth, crypto, permission, workflow/deployment configuration and external writes trigger it. A risky or incomplete review blocks completion and never overwrites the implementation.
+
+Role tools: CodeAnalysis/Research read and search; Implementation read/search/propose/apply; Review/SecurityReview read/search/diff; Test only fixed validation IDs; Documentation can propose edits only under docs/ or README/CHANGELOG; Integration gets only known repository/MCP tools, still subject to registry schema, ownership, mode, reviewed capability policy and approval. In multi-agent execution each effective tool request is assigned and checked against its role. An approval wrapper cannot bypass the role check. Specialists can request at most three tools per pass and cannot execute proposed patches themselves; the approved orchestrator remains the sole writer.
+
+Limits: at most nine graph nodes, twelve specialist model passes, job-wide model/token/cost/time limits, existing tool/step/replan/repair limits. No recursive delegation or unbounded agent conversation. Results are read from SQL on restart. Review is advisory evidence plus a completion gate; deterministic hashes, approval bindings, sandbox validation and policy remain independent.
+
+Tests exercise actual read tools, evidence handoff, encrypted graph persistence, dependency rejection, no replay and role restrictions. Provider and manual routing constraints apply to every role.

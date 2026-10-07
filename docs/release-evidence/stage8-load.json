@@ -1,0 +1,21 @@
+{
+  "scenario": "isolated multi-tenant model routing + SQL quota reservations + shared Redis circuit",
+  "requests": 100,
+  "concurrency": 10,
+  "duration_seconds": 0.817,
+  "p50_ms": 62.267,
+  "p95_ms": 206.146,
+  "p99_ms": 245.613,
+  "error_count": 0,
+  "error_rate": 0.0,
+  "failures": [],
+  "queue_delay_p95_ms": 724.0,
+  "cpu_seconds": 0.702,
+  "max_rss_kib": 86652,
+  "db_pool_checked_out": 0,
+  "redis_used_memory_bytes": 1174240,
+  "completed_usage_entries": 100,
+  "accounted_tokens": 1500,
+  "provider": "controlled 5ms mock; no billable external calls",
+  "production_capacity_claim": false
+}

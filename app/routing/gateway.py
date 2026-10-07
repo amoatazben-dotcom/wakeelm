@@ -136,11 +136,13 @@ class RoutingGateway:
             metric("model_calls")
             started = time.monotonic()
             error = None
+            invoked = False
             try:
                 await breaker.before()
                 job = getattr(self.models, "job", None)
                 if job:
                     job.model_requests += 1
+                invoked = True
                 result = await invoke(candidate)
                 await breaker.success()
                 usage = result[1]
@@ -169,7 +171,10 @@ class RoutingGateway:
                 return result
             except SafeError as exc:
                 error = exc
-                ledger.status = "FAILED"
+                ledger.status = "FAILED" if invoked else "REJECTED"
+                if not invoked:
+                    ledger.estimated_cost = 0
+                    ledger.input_tokens = ledger.output_tokens = 0
                 failure = FAILURES.get(exc.code, "UNKNOWN")
                 if failure not in RETRYABLE:
                     raise

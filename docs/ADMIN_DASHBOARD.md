@@ -1,0 +1,11 @@
+# Admin operations
+
+The TypeScript/React dashboard is built by Vite and served as static assets under `/admin-web/` by FastAPI. Arabic/English and RTL/LTR are first-class. The server owns identity and policy: no tokens in localStorage, no privileged frontend role decisions as an authorization boundary. Same-origin cookies avoid an unnecessary second internal service or duplicated Next.js authentication. Node is build/test only.
+
+OIDC authorization code + PKCE + state/nonce uses configured HTTPS endpoints and pinned public-network transport. ID/access signatures require RS256, issuer, audience, expiry/iat and subject validation; MFA is required by default. Short fixed sessions live encrypted in Redis with Secure HttpOnly SameSite cookies. Cookie writes require both server-held CSRF token and exact Origin. Logout revokes the server session. Without complete OIDC configuration admin is unavailable. Provision bootstrap subjects through configuration, never a shared password.
+
+Roles: SUPER_ADMIN all; ADMIN operations/quotas/support/read/audit; SUPPORT metadata and user/job support; AUDITOR read/audit; READ_ONLY metadata. Security controls and identity administration require SUPER_ADMIN. Disabled SQL identities override bootstrap access. Every admin write appends immutable normal-UI audit; private prompts, source uploads and credential ciphertext are excluded from collections.
+
+Views: overview, users, live jobs, providers, models, repositories, MCP, usage, audit, health, flags and settings. Jobs expose progress, model/provider and estimated cost; flags support targeting and global emergency stops; users/jobs/providers/integrations have role-checked controls. All collections are paginated. Audit can filter owner/job/action/risk/integration/time/status. No normal admin endpoint deletes audit history.
+
+Required configuration is listed in `.env.example`: issuer, authorize/token/JWKS endpoints, client ID, audience, optional client secret, HTTPS public base, MFA and bootstrap subjects. Register `/admin/callback`. Provider-specific OIDC enrollment is operator configuration, not an implemented identity provider. API tests verify roles/CSRF/audit; real Chromium tests verify both languages, direction, unauthenticated login and hidden reader controls. Live identity-provider login remains a deployment gate.
