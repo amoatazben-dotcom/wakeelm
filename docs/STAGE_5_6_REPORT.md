@@ -26,7 +26,7 @@
 22. **التحقق الأمني:** 199 passed بلا skipped، تحذير deprecation واحد من FastAPI TestClient/httpx. Ruff lint/format وgit diff --check ناجحة، build wheel/sdist ناجح، migration round-trip/check ناجح. Transport اختبار TLS فعلي بشهادة اختبار موثوقة يرفض redirects ويضبط الأصل والحجم والوقت؛ SSRF الإنتاجي يرفض private/metadata/internal URLs. اختبارات SDK تمنع أدوات خطرة، إعادة استخدام/عزل الموافقات والتصعيد وتتحقق من audit. اختبارات Docker السابقة تؤكد منع الشبكة والأسرار ومسارات المضيف وتعمل بعد هذه التعديلات.
 23. **Railway:** تصميم الخدمة Python bot-api + PostgreSQL + Redis + volume خاص؛ لا sidecars لغات إضافية. يلزم Git في image Linux وHTTPS callbacks. يبقى sandbox disabled حتى validator خارجي موثوق. لم يُنشأ أو يُشغل أو يُنشر أي شيء في Railway، احترامًا لتأجيل المستخدم.
 24. **الفرع:** `stage-5-6-github-mcp-hybrid` في مستودع `amoatazben-dotcom/wakeelm`، مع رفع التغييرات إلى main وفق التفويض السابق بعد التحقق.
-25. **قائمة commits:** تقسيم مقصود إلى foundation/schema/dependencies، native GitHub، Git runtime، MCP SDK/policy/auth، worker/registry bridge، Telegram/API، الاختبارات، التوثيق. الرسائل الفعلية تُطابق القائمة في تاريخ الفرع، دون commit ضخم واحد؛ قد تختلف SHA المحلية عن المنشورة لأن النشر عبر حساب GitHub المتصل.
+25. **قائمة commits:** تقسيم مقصود إلى foundation/schema/dependencies، native GitHub، Git runtime، MCP SDK/policy/auth، worker/registry bridge، Telegram/API، الاختبارات، التوثيق، وعقود الإدخال الصارمة. الرسائل الفعلية تُطابق القائمة في تاريخ الفرع، دون commit ضخم واحد؛ قد تختلف SHA المحلية عن المنشورة لأن النشر عبر حساب GitHub المتصل.
 26. **القيود:** App/OAuth خارجي/Telegram حي لم تُختبر ببيانات إنتاج؛ لا نشر Railway. تجديد رمز مستخدم GitHub App غير منفذ ويتطلب إعادة ربط. لا OAuth dynamic registration/cross-origin issuer endpoints، لا stdio/SSE، schemas فيها refs/regex ترفض تحفظًا، database arbitrary SQL محظور حتى SELECT. كل أداة تحتاج fingerprint يراجعها مسؤول. مستودع المهمة لا يعاد استعماله لمهمة مستقلة دون استيراد جديد؛ تغير base يتطلب مراجعة جديدة. scan الأسرار تقريبي؛ CI review اعتراف مسؤول وليس تحليلًا شاملًا. `GIT_REQUIRE_VALIDATION=true` يمنع النشر على Railway حتى توفير validator. حساب GitHub Actions كان موقوفًا بسبب الفوترة في المرحلة السابقة؛ لا تعتمد نتيجة CI البعيدة بديلًا للاختبارات المحلية.
 27. **المرحلة 7:** استقبال برومبتها، تجهيز validator خارجي معزول مناسب Railway، قبول حي باستخدام App/Telegram/مزود MCP يملكها المستخدم، إعداد المتغيرات عند موعد التشغيل، إدارة تجديد GitHub user tokens/تنظيف OAuth states حسب الحاجة، وإضافة adapters وصلاحيات جديدة فقط بمتطلبات ومراجعة محددة. لا نشر إنتاج تلقائي قبل اكتمال مراحل البناء المطلوبة.
 
@@ -111,3 +111,15 @@
 - `pyproject.toml`
 - `requirements.txt`
 - `uv.lock`
+
+## رسائل commits المنشورة
+
+- `feat: add owned integration schema and secure transport foundation`
+- `feat: add bounded credential-safe Git runtime and repository scanning`
+- `feat: add GitHub App connections and approved repository workflow`
+- `feat: add reviewed MCP SDK capabilities and scoped OAuth`
+- `feat: bridge GitHub and MCP into existing jobs and approval engine`
+- `feat: add private Telegram integration flows and signed callbacks`
+- `test: verify GitHub MCP OAuth and transport security`
+- `docs: document stages 5 and 6 architecture setup and verified limits`
+- `feat: finalize strict integration tool input contracts`
