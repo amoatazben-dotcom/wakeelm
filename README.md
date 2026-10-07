@@ -1,6 +1,6 @@
-# Telegram AI Agent — Stages 1–4
+# Telegram AI Agent — Stages 1–6
 
-Async Python backend with FastAPI, aiogram 3, PostgreSQL, Redis and a universal OpenAI-compatible gateway. Arabic is the default; English is persisted per user. Provider onboarding, discovery, model selection and chat are joined by secure project uploads/indexing/search/context and a bounded coding agent with patches, diffs, approvals, rollback and container validation. The bot does not push repositories, deploy applications or execute MCP.
+Async Python backend with FastAPI, aiogram 3, PostgreSQL, Redis and a universal OpenAI-compatible gateway. Arabic is the default; English is persisted per user. Provider onboarding, discovery, model selection and chat are joined by secure project uploads/indexing/search/context and a bounded coding agent with patches, diffs, approvals, rollback and container validation. Stages 5/6 add owned GitHub repositories, isolated agent branches and separately approved commit/push/PR actions, plus reviewed MCP tools/resources/prompts and OAuth. Deployment tools remain unavailable.
 
 ## Local setup
 
@@ -25,7 +25,7 @@ sh scripts/start.sh
 
 Endpoints: `/health` (liveness), `/ready` (dependency readiness). Commands: `/start`, `/help`, `/settings`, `/providers`, `/models`, `/cancel`. Interact in a private chat only.
 
-Menus: new chat, API providers, models, settings and the latest 20 audit entries are functional. Files/projects and intelligent tasks are implemented; tools/MCP and the usage billing dashboard remain deferred. Usage token counts are safely logged when supplied by the provider; there is no usage billing dashboard.
+Menus: new chat, API providers, models, settings and the latest 20 audit entries are functional. Files/projects and intelligent tasks are implemented; GitHub and tools/MCP are implemented; the usage billing dashboard remains deferred. Usage token counts are safely logged when supplied by the provider; there is no usage billing dashboard.
 
 ## Checks
 
@@ -54,3 +54,9 @@ Upload text/source/config, PDF, DOCX, XLSX or bounded ZIP/TAR/GZ project archive
 Persist `WORKSPACE_STORAGE_ROOT` on a private volume; defaults/limits are in `.env.example`. Command execution is disabled until an administrator provisions a trusted Docker validator. It never falls back to executing uploaded code on the API host. Railway publication is intentionally deferred until all requested construction stages finish.
 
 See [agent runtime](docs/AGENT_RUNTIME.md), [tool policy](docs/TOOL_SECURITY.md), [approvals](docs/APPROVALS.md), [sandbox](docs/SANDBOX.md), [uploads](docs/FILES_AND_WORKSPACES.md), [indexing](docs/PROJECT_INDEXING.md), [context](docs/CONTEXT_ENGINE.md) and [stage 3/4 report](docs/STAGE_3_4_REPORT.md).
+
+## GitHub and MCP
+
+GitHub App is preferred; scoped fine-grained PAT is the fallback. GitHub and MCP menus use private connections and queued discovery/import. Writes are disabled until operator configuration and always require exact approvals. Unknown MCP tools remain disabled until schema/description review. Optional integration settings do not prevent the basic bot from starting.
+
+See [GitHub setup](docs/GITHUB_APP.md), [repository workflow](docs/REPOSITORY_AGENT.md), [Git safety](docs/GIT_SECURITY.md), [MCP](docs/MCP.md), [OAuth](docs/MCP_AUTH.md), [MCP security](docs/MCP_SECURITY.md), [integration profiles](docs/INTEGRATIONS.md), [technology choice](docs/TECHNOLOGY_SELECTION.md) and [stage 5/6 report](docs/STAGE_5_6_REPORT.md). Railway deployment remains deferred by request.

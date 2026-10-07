@@ -13,3 +13,9 @@
 Stage 3/4 add descriptor-based no-follow paths, bounded archive extraction, ownership-scoped workspaces/search/chunks, encrypted chunk/plan/snapshot/diff/output storage, strict registered tools, mode policy, exact hash edits, persisted expiring approvals, bounded loops and a separate network-disabled container runner. See TOOL_SECURITY.md, APPROVALS.md and SANDBOX.md for enforcement and tested limits.
 
 Deferred: external review, encryption-key rotation tooling, usage/cost quotas, VM-level isolation and an authenticated hosted validation worker for Railway. Model narrative accuracy and semantic goal completion still require human review. Use a private persistent storage volume and protect the database/master key; working source files are plaintext on disk with private permissions.
+
+## GitHub and MCP
+
+See GIT_SECURITY.md and MCP_SECURITY.md for branch, approval, SSRF, untrusted-output and credential boundaries. GitHub App user access is checked against installation repositories before a repository-scoped installation token is minted. MCP tools default disabled and require operator-reviewed fingerprints; high-risk writes require fresh exact approvals. OAuth uses one-use state/tickets, PKCE S256, nonce cookies and issuer/resource/redirect binding. Signed GitHub webhooks are idempotent. Integration job payloads are encrypted and cleared on terminal execution/recovery; inactive users cannot run queued work.
+
+Start command disables query access logs; configure proxy logs similarly. A normal agent-branch Git push can execute existing repository workflows, so publishing is blocked until GITHUB_PUSH_CI_REVIEWED is explicitly enabled after production isolation review. Heuristic secret scanning is not a guarantee for arbitrary unknown secrets.

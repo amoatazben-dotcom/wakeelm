@@ -20,3 +20,22 @@ Translations live in `app/locales/ar.json` and `en.json`, with matching keys. St
 ## Stages 3/4
 
 Storage → parsers/scanner → encrypted chunks/symbols/manifest → exact/optional semantic search → bounded ContextEngine. Project detail routes connect to the durable AgentJob queue. AgentWorker → Planner → ToolRegistry/Policy → owned workspace reads/patches or Approval pause → isolated validator → persisted verification. Redis separates worker/workspace/edit leases from Telegram FSM locks. New tables are defined in models/projects.py and models/agent.py; Alembic migrations apply them independently. See AGENT_RUNTIME.md for recovery and cancellation. No AI tool accesses GitHub or deploys Railway.
+
+## Stages 5/6 boundaries
+
+Native GitHub and official Python MCP adapters share the existing worker, ToolRegistry, ToolPolicyEngine and ApprovalService. Eight new integration tables plus AgentJob kind/encrypted payload fields preserve ownership and secret isolation. Git metadata lives beside the owned working tree in private metadata; MCP secrets live in encrypted SQL fields.
+
+```mermaid
+flowchart TD
+    Telegram --> Jobs[Existing AgentJob queue]
+    OAuth[FastAPI OAuth/webhook] --> Jobs
+    Jobs --> Worker[Existing leased worker]
+    Worker --> Registry[ToolRegistry / ToolPolicyEngine]
+    Registry --> Approval[Existing exact approval store]
+    Registry --> Native[Native GitHub / ControlledGitService]
+    Registry --> Adapter[MCPToolAdapter / official Python SDK]
+    Native --> Working[Stage 3 workspaces / Stage 4 patches and validator]
+    Adapter --> HTTPS[Pinned HTTPS MCP endpoint]
+```
+
+No additional language/runtime service was justified. Native GitHub is the sole repository-write authority; MCP cannot expose a parallel GitHub write path.

@@ -27,3 +27,13 @@ To run migrations manually in an already-linked service: `railway run alembic up
 
 
 Stage 3/4: attach a persistent private volume and set WORKSPACE_STORAGE_ROOT to its mounted directory (e.g. /data/workspaces). Preserve MASTER_ENCRYPTION_KEY for provider tokens, project chunks, plans, diffs and snapshots. Keep SANDBOX_BACKEND=disabled on a normal Railway app until an authenticated external isolated runner is designed; there is no Docker daemon there and no host fallback. New defaults are listed in .env.example. The migrations add seven workspace tables and seven agent tables. Live acceptance and Railway health verification are pending the user's deployment milestone and production credentials.
+
+## Stages 5/6 deployment design (deferred)
+
+Continue with one Python `bot-api` service, PostgreSQL, Redis and the private persistent workspace volume. No TypeScript/Rust sidecar is needed. Ensure trusted `git` is installed in the runtime before enabling repository import; if the selected Railpack image lacks Git, add a reviewed build installation step/image before live deployment. Linux resource limits are used by the controlled Git subprocess. HTTPS egress must reach api.github.com/github.com and the reviewed public MCP/issuer origins. Do not allow arbitrary private/metadata access.
+
+Add the optional integration variables from .env.example only when configuring those features. GITHUB_APP_* and GITHUB_CLIENT_* / GITHUB_WEBHOOK_SECRET are operator secrets; user PAT/MCP tokens are connected inside private Telegram and encrypted in SQL, never shared service env variables. INTEGRATIONS_CALLBACK_BASE_URL is the app's HTTPS domain and must match provider callback registrations. MCP_OAUTH_CLIENTS and MCP_TOOL_POLICIES are explicit JSON admin configuration. Leave write/CI review/comments false by default.
+
+Migration 45e2729dffcb adds GitHub connections/repos/links, MCP servers/credentials/tools/resources, OAuth states and AgentJob kind/encrypted payload. Pre-deploy already runs Alembic. Normal Railway does not provide a Docker daemon; keep SANDBOX_BACKEND=disabled until Stage 7 provisions a trusted external validator. With default GIT_REQUIRE_VALIDATION=true repository publication then remains blocked, as intended.
+
+No Railway project creation, variable mutation, service start or deployment was performed for Stages 5/6. The user postponed deployment until all construction stages finish.
