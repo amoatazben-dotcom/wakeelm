@@ -6,7 +6,9 @@ COPY admin-web/ ./
 RUN npm run build
 
 FROM python:3.13-slim-trixie
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ARG BUILD_GIT_SHA=unknown
+ARG BUILD_TIMESTAMP=unknown
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 BUILD_GIT_SHA=$BUILD_GIT_SHA BUILD_TIMESTAMP=$BUILD_TIMESTAMP
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates postgresql-client && rm -rf /var/lib/apt/lists/* && useradd --uid 10001 --create-home agent
 COPY requirements.txt ./

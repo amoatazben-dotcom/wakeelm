@@ -1,6 +1,6 @@
 {
   "bot.start.title": "Welcome to the AI Agent 🤖\nConnect AI providers, browse models, and use them from Telegram.",
-  "bot.help": "Commands: /start /help /settings /providers /models\nAdd a provider, select a model, then open a new chat. Use /cancel to cancel input.",
+  "bot.help": "Commands: /start /help /settings /providers /models\nAdd a provider, select a model, then open a new chat. Use /cancel to cancel input.\n\nModels: choose manually or route by speed, cost and capability, with bounded fallback.\nAgent: fast/balanced/deep/multi-agent; approvals and execution limits always apply.\nMemory: encrypted context scoped to user, project and task; files/tool outputs are untrusted data.\nUsage: check usage for quotas and estimated costs.\nExternal writes and isolated validation require configured services and appropriate approvals.",
   "menu.chat": "💬 New chat",
   "menu.providers": "🌐 API providers",
   "menu.models": "🤖 Models",
@@ -390,5 +390,8 @@
   "audit.MODEL_ROUTED": "Model routed",
   "routing.probe": "🔬 Bounded capability probe (may cost credit)",
   "error.WRITE_OUTCOME_UNKNOWN": "External write outcome is unknown; reconcile before retrying.",
-  "agent.cost_warning": "💰 Conservative estimate for all possible model calls: ${cost}. Execution stops at the job budget or your quota."
+  "agent.cost_warning": "💰 Conservative estimate for all possible model calls: ${cost}. Execution stops at the job budget or your quota.",
+  "error.WORKSPACE_STORAGE_MISSING": "Workspace storage is unavailable; restore its snapshot before continuing.",
+  "status.MISSING": "Storage missing",
+  "audit.WORKSPACE_STORAGE_MISSING": "Workspace storage missing"
 }

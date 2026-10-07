@@ -132,6 +132,11 @@ class WorkspaceService:
     async def index(self, workspace_id, agent_job_id=None):
         workspace = await self.owned(workspace_id, True)
         await self.idle(workspace_id, agent_job_id)
+        if not self.storage.root_for(self.user_id, workspace.id).is_dir():
+            workspace.status = "MISSING"
+            self.event(workspace, "WORKSPACE_STORAGE_MISSING", status="MISSING")
+            await self.session.commit()
+            raise SafeError("WORKSPACE_STORAGE_MISSING")
         workspace.status = "INDEXING"
         paths = await asyncio.to_thread(self.storage.list_files, self.user_id, workspace.id)
 

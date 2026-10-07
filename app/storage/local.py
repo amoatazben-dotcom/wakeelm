@@ -60,6 +60,8 @@ class LocalWorkspaceStorage:
         return result
 
     def _files(self, root):
+        if not root.is_dir():
+            raise SafeError("WORKSPACE_STORAGE_MISSING")
         files = []
         for path in root.rglob("*"):
             mode = path.lstat().st_mode

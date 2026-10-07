@@ -1908,7 +1908,7 @@ wheels = [
 
 [[package]]
 name = "telegram-ai-agent"
-version = "0.8.0"
+version = "0.9.0b1"
 source = { editable = "." }
 dependencies = [
     { name = "aiogram" },
