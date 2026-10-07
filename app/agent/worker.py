@@ -8,6 +8,7 @@ from app.agent.orchestrator import AgentOrchestrator
 from app.agent.patches import PatchEngine
 from app.core.exceptions import SafeError
 from app.db.base import now
+from app.db.models import User
 from app.db.models.agent import AgentJob, Approval, WorkspaceChangeSet
 from app.services.model_service import ModelService
 from app.services.provider_service import ProviderService
@@ -72,6 +73,8 @@ class AgentWorker:
                 except SafeError:
                     job.failure_code = "RECOVERY_REQUIRES_REVIEW"
                 job.status = "FAILED"
+                if job.kind != "AGENT":
+                    job.payload_encrypted = None
                 job.failure_message_safe = job.failure_code
                 job.completed_at = now()
                 await session.commit()
@@ -102,10 +105,23 @@ class AgentWorker:
             )
             if not job:
                 return False
+            user = await session.get(User, job.user_id)
+            if not user or not user.is_active:
+                job.status = "FAILED"
+                job.failure_code = "INACTIVE"
+                job.payload_encrypted = None
+                job.completed_at = now()
+                await session.commit()
+                return True
             job.status = "PLANNING"
             await session.commit()
             workspace, models = self.services(session, job.user_id)
-            await AgentOrchestrator(workspace, models, notify=self.notify).run(job.id)
+            if job.kind != "AGENT":
+                from app.integrations.jobs import IntegrationJobExecutor
+
+                await IntegrationJobExecutor(workspace, self.notify).run(job)
+            else:
+                await AgentOrchestrator(workspace, models, notify=self.notify).run(job.id)
             return True
 
     async def run(self):

@@ -83,6 +83,9 @@ class AgentValidator:
         commands = ValidationCommandDetector().resolve(
             command_id, await self.workspaces.manifest(self.job.workspace_id)
         )
+        from app.github.repositories import workspace_digest
+
+        validated_digest = await workspace_digest(self.workspaces, self.job.workspace_id)
         session = self.workspaces.session
         value = ValidationRun(
             id=str(uuid.uuid4()),
@@ -113,6 +116,7 @@ class AgentValidator:
                 "network": "DISABLED",
                 "isolated_copy": True,
                 "passed": value.status == "PASSED",
+                "workspace_digest": validated_digest,
             }
             audit(
                 session,

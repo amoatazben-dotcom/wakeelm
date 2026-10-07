@@ -178,3 +178,23 @@ class AgentService:
         if active:
             raise SafeError("WORKSPACE_BUSY")
         return await PatchEngine(self.w, job).rollback(ident)
+
+    async def enqueue_action(self, ident, request):
+        job = await self.owned.job(ident, True)
+        if job.kind != "AGENT" or job.status != "COMPLETED" or job.mode != "WORKSPACE":
+            raise SafeError("JOB_FINISHED")
+        if request.tool_name not in {"git.commit", "git.push_branch", "github.create_pull_request"}:
+            raise SafeError("POLICY_DENIED")
+        await self.w.owned(job.workspace_id, True)
+        await self.w.idle(job.workspace_id)
+        if job.current_step >= job.max_steps:
+            raise SafeError("AGENT_LIMIT")
+        plan = AgentPlan.model_validate_json(self.w.secrets.decrypt(job.plan_encrypted))
+        plan.steps.append(request)
+        plan.complete = True
+        plan.answer = ""
+        job.plan_encrypted = self.w.secrets.encrypt(plan.model_dump_json())
+        job.plan_json = {"tools": [step.tool_name for step in plan.steps], "risk": "HIGH"}
+        job.status = "QUEUED"
+        job.completed_at = None
+        return job

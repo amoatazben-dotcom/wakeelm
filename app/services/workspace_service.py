@@ -216,7 +216,9 @@ class WorkspaceService:
         if page < 0:
             raise SafeError("INVALID_INPUT")
         query = select(Workspace).where(
-            Workspace.user_id == self.user_id, Workspace.status != "DELETED"
+            Workspace.user_id == self.user_id,
+            Workspace.status != "DELETED",
+            Workspace.type != "INTEGRATION_CONTROL",
         )
         total = await self.session.scalar(select(func.count()).select_from(query.subquery()))
         return list(

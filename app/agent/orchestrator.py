@@ -50,6 +50,10 @@ class AgentOrchestrator:
                 if remaining <= 0:
                     raise SafeError("AGENT_LIMIT")
                 async with asyncio.timeout(remaining):
+                    workspace = await self.w.owned(job.workspace_id)
+                    if workspace.type == "REPOSITORY":
+                        await registry.repositories.prepare(job)
+                    await registry.hydrate()
                     if job.plan_encrypted:
                         plan = AgentPlan.model_validate_json(
                             self.w.secrets.decrypt(job.plan_encrypted)
@@ -117,6 +121,8 @@ class AgentOrchestrator:
                             if request.tool_name == "agent.request_approval"
                             else request.tool_name
                         )
+                        if effective_tool == "git.commit":
+                            job.result_json = {**job.result_json, "last_commit": result["sha"]}
                         if effective_tool == "workspace.propose_patch":
                             job.result_json = {
                                 **job.result_json,

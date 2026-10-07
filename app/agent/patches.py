@@ -32,6 +32,20 @@ class PatchEngine:
             raise SafeError("POLICY_DENIED")
         if job.status in {"CANCELLED", "FAILED", "LIMIT_REACHED"}:
             raise SafeError("JOB_CANCELLED")
+        workspace = await self.workspaces.owned(job.workspace_id)
+        if write and workspace.type == "REPOSITORY":
+            from app.github.repositories import RepositoryService
+
+            link, repo, connection, git = await RepositoryService(self.workspaces).context(
+                job.workspace_id
+            )
+            if (
+                not link.working_branch
+                or link.working_branch in {"main", "master", repo.default_branch}
+                or await git.current_branch() != link.working_branch
+                or link.metadata_json.get("job_id") != job.id
+            ):
+                raise SafeError("PROTECTED_BRANCH")
         if write and job.mode != "WORKSPACE":
             raise SafeError("POLICY_DENIED")
         return job
