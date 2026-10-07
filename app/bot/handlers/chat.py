@@ -1,4 +1,5 @@
 from aiogram import F, Router
+from aiogram.filters import StateFilter
 
 from app.bot.handlers.common import say
 from app.bot.states import Chat
@@ -13,4 +14,7 @@ async def chat_message(event, user, models):
 def build_router():
     router = Router()
     router.message.register(chat_message, Chat.active, F.text)
+    # The selected model is durable; Redis conversation state may expire or be
+    # cleared by menu navigation. Preserve onboarding and other explicit states.
+    router.message.register(chat_message, StateFilter(None), F.text, ~F.text.startswith("/"))
     return router
