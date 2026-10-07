@@ -95,7 +95,15 @@ async def model_actions(event, user, models, state: FSMContext):
     model = await models.owned.model(ident)
     if action == "activate":
         await models.activate(ident)
-        await say(event, tr(user.language, "common.saved"), back(user.language))
+        from app.bot.states import Chat
+
+        await state.clear()
+        await state.set_state(Chat.active)
+        await say(
+            event,
+            tr(user.language, "common.saved") + "\n" + tr(user.language, "chat.ready"),
+            back(user.language),
+        )
     elif action == "test":
         await state.update_data(test_model=ident)
         await say(
