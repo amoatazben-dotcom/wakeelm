@@ -54,18 +54,21 @@ fun ModelEntity.domain() = AiModel(id, providerId, name, externalId, status, pri
 @Singleton class ChatRepository @Inject constructor(private val stream: ChatStreamClient, private val dao: CacheDao, private val cipher: CacheCipher) {
     fun send(conversationId: String, text: String, requestId: String = UUID.randomUUID().toString()): Flow<StreamEvent> = flow {
         val now = System.currentTimeMillis()
-        val user = MessageEntity("u-$requestId", conversationId, requestId, "user", cipher.seal(text), "SENDING", now)
-        var assistant = MessageEntity("a-$requestId", conversationId, requestId, "assistant", cipher.seal(""), "STREAMING", now + 1)
+        val oldUser = dao.message(conversationId, requestId, "user")
+        val oldAssistant = dao.message(conversationId, requestId, "assistant")
+        val user = MessageEntity(oldUser?.id ?: "u-$requestId", conversationId, requestId, "user", cipher.seal(text), "SENDING", oldUser?.sequence ?: now)
+        var assistant = MessageEntity(oldAssistant?.id ?: "a-$requestId", conversationId, requestId, "assistant", cipher.seal(""), "STREAMING", oldAssistant?.sequence ?: (now + 1))
         var content = ""
         dao.messages(listOf(user, assistant))
         var finished = false
+        var accepted = false
         try {
             stream.stream(SendInput(conversationId, requestId, text)).collect { event ->
                 when(event) {
-                    is StreamEvent.Started -> dao.messages(listOf(user.copy(status = "COMPLETED")))
+                    is StreamEvent.Started -> { accepted = true; dao.messages(listOf(user.copy(status = "COMPLETED"))) }
                     is StreamEvent.Delta -> content += event.text
                     is StreamEvent.Fallback -> content = ""
-                    is StreamEvent.Snapshot -> { content = event.message.content; assistant = assistant.copy(status = event.message.status) }
+                    is StreamEvent.Snapshot -> { accepted = true; dao.messages(listOf(user.copy(status = "COMPLETED"))); content = event.message.content; assistant = assistant.copy(status = event.message.status) }
                     is StreamEvent.Done -> { assistant = assistant.copy(status = event.status.name); finished = true }
                     is StreamEvent.Error -> throw ApiFailure(event.code)
                 }
@@ -77,7 +80,7 @@ fun ModelEntity.domain() = AiModel(id, providerId, name, externalId, status, pri
             kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { dao.messages(listOf(assistant.copy(sealedContent = cipher.seal(content), status = "CANCELLED"))) }
             throw e
         } catch (e: Exception) {
-            dao.messages(listOf(user.copy(status = "COMPLETED"), assistant.copy(sealedContent = cipher.seal(content), status = "FAILED")))
+            dao.messages(listOf(user.copy(status = if(accepted) "COMPLETED" else "FAILED"), assistant.copy(sealedContent = cipher.seal(content), status = "FAILED")))
             throw e
         }
     }
