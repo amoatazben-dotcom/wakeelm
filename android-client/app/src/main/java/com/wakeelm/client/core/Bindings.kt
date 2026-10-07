@@ -17,6 +17,7 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 @Module @InstallIn(SingletonComponent::class) object Bindings {
+    @Provides @Singleton fun status(monitor: NetworkMonitor): NetworkStatus = monitor
     @Provides @Singleton fun session(store: SessionStore): SessionStorage = store
     @Provides @Singleton fun json() = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     @Provides @Singleton fun http(store: SessionStorage, json: Json): OkHttpClient {
