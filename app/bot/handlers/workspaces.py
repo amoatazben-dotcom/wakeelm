@@ -125,6 +125,13 @@ async def workspace_detail(event, user, workspaces, ident):
         keyboard(user.language, rows),
     )
 
+    if workspace.type == "REPOSITORY":
+        await say(
+            event,
+            tr(user.language, "github.publish_info"),
+            keyboard(user.language, [[("github.publish", "rp:view:" + workspace.id)]]),
+        )
+
 
 async def browse(event, user, workspaces, state, ident, directory="", page=0):
     items, total = await workspaces.browse(ident, directory, page)

@@ -2,7 +2,16 @@ from aiogram import Dispatcher
 from aiogram.fsm.storage.redis import DefaultKeyBuilder, RedisEventIsolation, RedisStorage
 from aiogram.fsm.strategy import FSMStrategy
 
-from app.bot.handlers import agent, chat, fallback, models, providers, start, workspaces
+from app.bot.handlers import (
+    agent,
+    chat,
+    fallback,
+    integrations,
+    models,
+    providers,
+    start,
+    workspaces,
+)
 from app.bot.middleware import ServicesMiddleware
 
 
@@ -22,7 +31,16 @@ def create_dispatcher(redis, sessions, secrets, http, limits, settings):
     dispatcher.include_routers(
         *(
             module.build_router()
-            for module in (start, providers, models, workspaces, agent, chat, fallback)
+            for module in (
+                start,
+                providers,
+                models,
+                workspaces,
+                integrations,
+                agent,
+                chat,
+                fallback,
+            )
         )
     )
     return dispatcher

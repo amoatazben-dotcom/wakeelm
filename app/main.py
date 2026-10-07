@@ -11,6 +11,7 @@ from redis.asyncio import Redis
 
 from app.agent.worker import AgentWorker
 from app.api.health import router
+from app.api.integrations import router as integrations_router
 from app.bot.dispatcher import create_dispatcher
 from app.core.config import Settings
 from app.core.limits import Limits
@@ -30,6 +31,10 @@ def create_app(settings=None, start_bot=True):
         redis = Redis.from_url(settings.redis_url.get_secret_value())
         bot = Bot(settings.telegram_bot_token.get_secret_value())
         app.state.engine, app.state.redis = engine, redis
+        app.state.sessions = sessions
+        app.state.settings = settings
+        app.state.secrets = SecretManager(settings.master_encryption_key.get_secret_value())
+        app.state.limits = Limits(redis)
         app.state.bot = bot
         dispatcher = create_dispatcher(
             redis,
@@ -116,6 +121,7 @@ def create_app(settings=None, start_bot=True):
 
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
     app.include_router(router)
+    app.include_router(integrations_router)
 
     @app.middleware("http")
     async def request_id(request, call_next):

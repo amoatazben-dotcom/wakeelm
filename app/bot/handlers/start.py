@@ -74,6 +74,10 @@ async def screen(event, target, user, state, session, providers, models, **data)
             await files_menu(event, user)
         else:
             await workspace_list(event, user, data["workspaces"])
+    elif target in {"github", "tools"}:
+        from app.bot.handlers.integrations import github_menu, mcp_menu
+
+        await (github_menu(event, user) if target == "github" else mcp_menu(event, user))
     elif target == "chat":
         await state.set_state(Chat.active)
         await say(event, tr(lang, "chat.ready"), back(lang))

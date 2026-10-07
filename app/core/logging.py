@@ -27,6 +27,7 @@ def configure_logging(level="INFO"):
     logging.getLogger("httpx").setLevel(logging.CRITICAL)
     logging.getLogger("httpcore").setLevel(logging.CRITICAL)
     logging.getLogger("aiogram").setLevel(logging.CRITICAL)
+    logging.getLogger("mcp").setLevel(logging.CRITICAL)
     structlog.configure(
         processors=[
             safe_fields,

@@ -23,6 +23,7 @@ def menu(lang):
                 "models",
                 "files",
                 "projects",
+                "github",
                 "tools",
                 "settings",
                 "usage",

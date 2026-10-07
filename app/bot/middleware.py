@@ -55,6 +55,15 @@ class ServicesMiddleware(BaseMiddleware):
                     ),
                 )
                 data["agents"] = AgentService(data["workspaces"], data["models"])
+                from app.github.connections import GitHubConnections
+                from app.integrations.jobs import IntegrationJobs
+                from app.mcp.service import MCPService
+
+                data.update(
+                    github=GitHubConnections(session, user.id, self.secrets, self.settings),
+                    mcp=MCPService(session, user.id, self.settings, self.secrets, self.limits),
+                    integration_jobs=IntegrationJobs(data["workspaces"]),
+                )
                 result = await handler(event, data)
                 await session.commit()
                 return result

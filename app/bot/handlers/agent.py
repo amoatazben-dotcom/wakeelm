@@ -55,13 +55,23 @@ async def show_job(event, user, agents, ident):
             + "\n"
             + json.dumps(approval.arguments_summary, ensure_ascii=False)
         )
+        buttons.append([("agent.approval_details", f"job:details:{approval.id}")])
         buttons.append(
             [
                 ("agent.approve", f"job:approve:{approval.id}"),
                 ("agent.reject", f"job:reject:{approval.id}"),
             ]
         )
-    buttons.append([("common.back", f"ws:view:{job.workspace_id}")])
+    if job.result_json.get("output_encrypted"):
+        text += "\n" + agents.w.secrets.decrypt(job.result_json["output_encrypted"])
+    if job.result_json.get("workspace_id"):
+        buttons.append([("github.open_workspace", f"ws:view:{job.result_json['workspace_id']}")])
+    if job.result_json.get("server_id"):
+        buttons.append([("mcp.servers", f"mc:server:{job.result_json['server_id']}")])
+    if job.kind != "AGENT":
+        buttons.append([("common.back", "menu:home")])
+    else:
+        buttons.append([("common.back", f"ws:view:{job.workspace_id}")])
     await say(event, text[:4000], keyboard(user.language, buttons))
 
 
@@ -152,6 +162,15 @@ async def callback(event, user, agents, state: FSMContext):
             keyboard(user.language, [[("common.back", f"ws:view:{ident}")]]),
         )
     elif prefix == "job":
+        if action == "details":
+            approval = await agents.owned.approval(ident)
+            await event.message.answer_document(
+                BufferedInputFile(
+                    json.dumps(approval.arguments_summary, ensure_ascii=False, indent=2).encode(),
+                    "approval-details.json",
+                )
+            )
+            return
         if action == "cancel":
             await agents.cancel(ident)
         elif action in {"approve", "reject"}:
