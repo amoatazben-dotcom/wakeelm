@@ -32,16 +32,125 @@ import kotlinx.serialization.json.Json
 import java.util.Locale
 
 @Serializable data class Screen(val name: String): NavKey
-@Composable fun localized(code: String): String {
-    val context = LocalContext.current
-    val id = context.resources.getIdentifier(if(code == "long") "long_context" else code.lowercase(), "string", context.packageName)
-    return if (id == 0) stringResource(R.string.request_failed) else stringResource(id)
-}
+private val localizedIds = mapOf(
+    "app_name" to R.string.app_name,
+    "home" to R.string.home,
+    "chats" to R.string.chats,
+    "projects" to R.string.projects,
+    "tasks" to R.string.tasks,
+    "more" to R.string.more,
+    "providers" to R.string.providers,
+    "models" to R.string.models,
+    "settings" to R.string.settings,
+    "welcome" to R.string.welcome,
+    "login_help" to R.string.login_help,
+    "code" to R.string.code,
+    "login" to R.string.login,
+    "logout" to R.string.logout,
+    "loading" to R.string.loading,
+    "offline_cache" to R.string.offline_cache,
+    "refresh" to R.string.refresh,
+    "retry" to R.string.retry,
+    "reconnect" to R.string.reconnect,
+    "cancel" to R.string.cancel,
+    "copy" to R.string.copy,
+    "copied" to R.string.copied,
+    "send" to R.string.send,
+    "message" to R.string.message,
+    "new_chat" to R.string.new_chat,
+    "empty" to R.string.empty,
+    "future" to R.string.future,
+    "language" to R.string.language,
+    "arabic" to R.string.arabic,
+    "english" to R.string.english,
+    "theme" to R.string.theme,
+    "system" to R.string.system,
+    "light" to R.string.light,
+    "dark" to R.string.dark,
+    "backend" to R.string.backend,
+    "security" to R.string.security,
+    "security_detail" to R.string.security_detail,
+    "version" to R.string.version,
+    "add_provider" to R.string.add_provider,
+    "manage" to R.string.manage,
+    "name" to R.string.name,
+    "base_url" to R.string.base_url,
+    "api_token" to R.string.api_token,
+    "headers" to R.string.headers,
+    "show" to R.string.show,
+    "hide" to R.string.hide,
+    "paste" to R.string.paste,
+    "save" to R.string.save,
+    "delete" to R.string.delete,
+    "test" to R.string.test,
+    "checking" to R.string.checking,
+    "current_model" to R.string.current_model,
+    "routing" to R.string.routing,
+    "fallback" to R.string.fallback,
+    "fallback_notice" to R.string.fallback_notice,
+    "select" to R.string.select,
+    "model_selected" to R.string.model_selected,
+    "details" to R.string.details,
+    "context" to R.string.context,
+    "scroll_bottom" to R.string.scroll_bottom,
+    "you" to R.string.you,
+    "assistant" to R.string.assistant,
+    "all" to R.string.all,
+    "free" to R.string.free,
+    "working" to R.string.working,
+    "tool_calling" to R.string.tool_calling,
+    "vision" to R.string.vision,
+    "reasoning" to R.string.reasoning,
+    "coding" to R.string.coding,
+    "fast" to R.string.fast,
+    "long" to R.string.long_context,
+    "fast_unknown" to R.string.fast_unknown,
+    "auto" to R.string.auto,
+    "prefer_free" to R.string.prefer_free,
+    "prefer_fast" to R.string.prefer_fast,
+    "prefer_cheap" to R.string.prefer_cheap,
+    "prefer_strongest" to R.string.prefer_strongest,
+    "prefer_coding" to R.string.prefer_coding,
+    "manual_only" to R.string.manual_only,
+    "online" to R.string.online,
+    "unknown" to R.string.unknown,
+    "auth_failed" to R.string.auth_failed,
+    "rate_limited" to R.string.rate_limited,
+    "offline" to R.string.offline,
+    "invalid_response" to R.string.invalid_response,
+    "timeout" to R.string.timeout,
+    "auth_required" to R.string.auth_required,
+    "no_active_model" to R.string.no_active_model,
+    "invalid_input" to R.string.invalid_input,
+    "request_failed" to R.string.request_failed,
+    "internal" to R.string.internal,
+    "not_found" to R.string.not_found,
+    "interrupted" to R.string.interrupted,
+    "generation_active" to R.string.generation_active,
+    "feature_disabled" to R.string.feature_disabled,
+    "stream_overflow" to R.string.stream_overflow,
+    "available" to R.string.available,
+    "untested" to R.string.untested,
+    "disabled" to R.string.disabled,
+    "degraded" to R.string.degraded,
+    "unsupported" to R.string.unsupported,
+    "failed" to R.string.failed,
+    "cancelled" to R.string.cancelled,
+    "completed" to R.string.completed,
+    "streaming" to R.string.streaming,
+    "sending" to R.string.sending,
+    "free_verified" to R.string.free_verified,
+    "free_reported" to R.string.free_reported,
+    "paid" to R.string.paid,
+    "footer" to R.string.footer,
+)
+@Composable fun localized(code: String): String = stringResource(localizedIds[code.lowercase()] ?: R.string.request_failed)
 @Composable fun WorkspaceApp(vm: WorkspaceViewModel) {
     val prefs by vm.prefs.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val localizedContext = remember(context, prefs.language) {
-        context.createConfigurationContext(Configuration(context.resources.configuration).apply { setLocale(Locale.forLanguageTag(prefs.language)); setLayoutDirection(Locale.forLanguageTag(prefs.language)) })
+    val sourceConfiguration = LocalConfiguration.current
+    val localizedContext = remember(context, prefs.language, sourceConfiguration) {
+        context.createConfigurationContext(Configuration(sourceConfiguration).apply { setLocale(Locale.forLanguageTag(prefs.language)); setLayoutDirection(Locale.forLanguageTag(prefs.language)) })
     }
     val dark = when(prefs.theme) { "dark" -> true; "light" -> false; else -> isSystemInDarkTheme() }
     CompositionLocalProvider(LocalContext provides localizedContext, LocalConfiguration provides localizedContext.resources.configuration,
@@ -152,7 +261,7 @@ import java.util.Locale
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             OutlinedTextField(draft, { if(it.length <= 16000) draft = it }, Modifier.weight(1f), placeholder = { Text(stringResource(R.string.message)) }, maxLines = 5)
             if(state.generating) TextButton(onClick = vm::cancel) { Text(stringResource(R.string.cancel)) }
-            else TextButton(enabled = draft.isNotBlank() && state.online && state.conversationId != null, onClick = { vm.sendMessage(draft); draft = "" }) { Text(stringResource(R.string.send)) }
+            else TextButton(enabled = draft.isNotBlank() && state.online && !state.busy && state.conversationId != null, onClick = { vm.sendMessage(draft); draft = "" }) { Text(stringResource(R.string.send)) }
         }
     }
 }
@@ -225,7 +334,7 @@ fun filterModels(rows: List<AiModel>, filter: String): List<AiModel> = rows.filt
         LazyColumn { items(filtered, key = { it.id }) { model -> OutlinedCard(Modifier.fillMaxWidth().padding(vertical = 6.dp)) { Column(Modifier.padding(16.dp)) {
             Text(model.name, style = MaterialTheme.typography.titleMedium); Text(providers.find { it.id == model.providerId }?.name.orEmpty()); Text(localized(model.status) + " · " + localized(model.price))
             Text(model.capabilities.joinToString(" · ")); Text(stringResource(R.string.context) + ": " + (model.contextLength?.toString() ?: stringResource(R.string.unknown)))
-            Row { TextButton(onClick = { vm.choose(model.id) }, enabled = !state.busy && model.status != "UNSUPPORTED") { Text(stringResource(if(state.routing.active_model_id == model.id) R.string.selected else R.string.select)) }; TextButton(onClick = { detail = model }) { Text(stringResource(R.string.details)) } }
+            Row { TextButton(onClick = { vm.choose(model.id) }, enabled = !state.busy && model.status != "UNSUPPORTED") { Text(stringResource(if(state.routing.active_model_id == model.id) R.string.model_selected else R.string.select)) }; TextButton(onClick = { detail = model }) { Text(stringResource(R.string.details)) } }
         } } } }
     }
     detail?.let { model -> AlertDialog(onDismissRequest = { detail = null }, title = { Text(model.name) }, text = { Column { Text(model.externalId); Text(model.capabilities.joinToString(" · ")); Text(localized(model.price)); Text(localized(model.status)) } }, confirmButton = { TextButton(onClick = { detail = null }) { Text(stringResource(R.string.cancel)) } }) }
