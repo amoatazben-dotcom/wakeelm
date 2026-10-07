@@ -127,8 +127,17 @@ async def test_telegram_acceptance_flow(stack, monkeypatch, tmp_path):
     await send(callback="models:all:0:0")
     await send(callback=f"model:view:{model_id}")
     await send(callback=f"model:activate:{model_id}")
+    # Activation must accept the next message without another menu selection.
+    await send("هاي")
+    assert session.messages[-1].text == "OK"
+    await stack.redis.delete("limit:chat:1")
     await send(callback="menu:chat")
     await send("Hello")
+    assert session.messages[-1].text == "OK"
+    # Menu navigation clears transient state; the durable model still handles text.
+    await send(callback="menu:home")
+    await stack.redis.delete("limit:chat:1")
+    await send("Hello after leaving the menu")
     assert session.messages[-1].text == "OK"
     stack.http.error = __import__("app.core.exceptions", fromlist=["SafeError"]).SafeError(
         "AUTH_FAILED"
