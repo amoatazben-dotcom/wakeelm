@@ -16,6 +16,8 @@ import javax.inject.Singleton
     @Query("SELECT * FROM models ORDER BY id") fun models(): Flow<List<ModelEntity>>
     @Query("SELECT * FROM conversations ORDER BY rowid DESC") fun conversations(): Flow<List<ConversationEntity>>
     @Query("SELECT * FROM messages WHERE conversationId = :id ORDER BY sequence, rowid") fun messages(id: String): Flow<List<MessageEntity>>
+    @Query("SELECT * FROM messages WHERE conversationId = :conversationId AND requestId = :requestId AND role = :role LIMIT 1")
+    suspend fun message(conversationId: String, requestId: String, role: String): MessageEntity?
     @Upsert suspend fun providers(rows: List<ProviderEntity>)
     @Upsert suspend fun models(rows: List<ModelEntity>)
     @Upsert suspend fun conversations(rows: List<ConversationEntity>)
