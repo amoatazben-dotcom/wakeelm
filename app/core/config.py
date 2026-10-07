@@ -1,7 +1,7 @@
 from typing import Literal
 
 from cryptography.fernet import Fernet
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -61,7 +61,10 @@ class Settings(BaseSettings):
     git_max_repository_bytes: int = Field(default=100000000, ge=1000000, le=500000000)
     git_max_memory_mb: int = Field(default=512, ge=64, le=2048)
     git_require_validation: bool = True
-    integrations_callback_base_url: str | None = None
+    integrations_callback_base_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("integrations_callback_base_url", "MCP_CALLBACK_BASE_URL"),
+    )
     oauth_state_ttl_seconds: int = Field(default=600, ge=30, le=900)
     mcp_allowed_transports: list[str] = ["streamable_http"]
     mcp_connect_timeout_seconds: int = Field(default=10, ge=1, le=60)

@@ -114,6 +114,7 @@ class MCPService:
         server.capabilities_json = {
             **result["capabilities"],
             "prompts": json.loads(clean.clean(result["prompts"])),
+            "resource_templates": json.loads(clean.clean(result.get("resource_templates", []))),
         }
         server.last_connected_at = server.last_discovered_at = now()
         server.status = "CONNECTED"
@@ -293,9 +294,7 @@ class MCPService:
             tool.is_enabled = False
         audit(self.session, self.user_id, "MCP_SERVER_DISABLED", "mcp_server", ident)
 
-    async def call(self, tool, args, mode, approved=False):
-        tool = await self.owned.tool(tool.id)
-        server = await self.owned.server(tool.mcp_server_id)
+    def reviewed_rating(self, server, tool):
         rating = self.policy.classify(
             server,
             {
@@ -305,14 +304,12 @@ class MCPService:
                 "outputSchema": tool.output_schema_json,
             },
         )
-        if not rating["reviewed"] or rating.get("fingerprint") != tool.metadata_json.get(
-            "fingerprint"
-        ):
+        keys = ("risk", "capability", "approval", "required_scopes", "integration", "fingerprint")
+        if not rating["reviewed"] or any(rating.get(k) != tool.metadata_json.get(k) for k in keys):
             raise SafeError("MCP_REVIEW_REQUIRED")
-        self.policy.enforce(tool, args, mode)
-        if tool.requires_approval and not approved:
-            raise SafeError("APPROVAL_REQUIRED")
-        token = await self.token(server)
+        return rating
+
+    async def require_scopes(self, tool, server):
         required = set(tool.metadata_json.get("required_scopes", []))
         if required:
             cred = await self.session.scalar(
@@ -320,8 +317,23 @@ class MCPService:
                     MCPCredential.user_id == self.user_id, MCPCredential.mcp_server_id == server.id
                 )
             )
-            if not cred or not required <= set(cred.scopes_json):
+            if (
+                not cred
+                or cred.issuer not in self.settings.mcp_oauth_clients
+                or not required <= set(cred.scopes_json)
+            ):
                 raise SafeError("SCOPE_REQUIRED")
+
+    async def call(self, tool, args, mode, approved=False):
+        tool = await self.owned.tool(tool.id)
+        server = await self.owned.server(tool.mcp_server_id)
+        self.reviewed_rating(server, tool)
+        self.policy.enforce(tool, args, mode)
+        if tool.requires_approval and not approved:
+            raise SafeError("APPROVAL_REQUIRED")
+        token = await self.token(server)
+        await self.require_scopes(tool, server)
+        audit(self.session, self.user_id, "MCP_TOOL_CALL_REQUESTED", "mcp_tool", tool.id)
         result = await self.client.call(server.server_url, tool.external_name, args, token)
         if tool.output_schema_json and result.get("structuredContent") is not None:
             from app.mcp.policy import validate_arguments

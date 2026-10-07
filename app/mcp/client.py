@@ -2,6 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import timedelta
 
+import aiohttp
 import httpx
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
@@ -15,6 +16,8 @@ def safe_mcp_error(error):
         return error
     if isinstance(error, httpx.HTTPStatusError) and error.response.status_code == 401:
         return SafeError("AUTH_REQUIRED")
+    if isinstance(error, (httpx.TransportError, aiohttp.ClientError, OSError)):
+        return SafeError("OFFLINE")
     for child in getattr(error, "exceptions", []):
         value = safe_mcp_error(child)
         if value.code != "MCP_FAILED":
@@ -88,6 +91,11 @@ class MCPClient:
             caps = initialized.capabilities
             tools = await collect(session.list_tools, "tools") if caps.tools else []
             resources = await collect(session.list_resources, "resources") if caps.resources else []
+            templates = (
+                await collect(session.list_resource_templates, "resourceTemplates")
+                if caps.resources
+                else []
+            )
             prompts = await collect(session.list_prompts, "prompts") if caps.prompts else []
             return {
                 "protocol_version": initialized.protocolVersion,
@@ -95,6 +103,7 @@ class MCPClient:
                 "capabilities": caps.model_dump(mode="json"),
                 "tools": tools,
                 "resources": resources,
+                "resource_templates": templates,
                 "prompts": prompts,
             }
 

@@ -158,6 +158,16 @@ class MCPOAuth:
         try:
             return await self.http.request("POST", url, form=form)
         except SafeError as error:
+            from app.services.audit_service import audit
+
+            audit(
+                self.session,
+                self.user_id,
+                "MCP_SERVER_AUTH_FAILED",
+                "oauth_issuer",
+                status=error.code,
+            )
+            await self.session.commit()
             if error.http_status in {400, 401, 403}:
                 raise SafeError("AUTH_FAILED") from None
             raise
@@ -210,6 +220,17 @@ class MCPOAuth:
             or not 0 < ttl <= 86400
             or not set(scopes) <= set(config["scopes"])
         ):
+            from app.services.audit_service import audit
+
+            audit(
+                self.session,
+                self.user_id,
+                "MCP_SERVER_AUTH_FAILED",
+                "mcp_server",
+                server.id,
+                status="OAUTH_SCOPE_ESCALATION",
+            )
+            await self.session.commit()
             raise SafeError("OAUTH_SCOPE_ESCALATION")
         value = existing or MCPCredential(
             id=str(uuid.uuid4()),

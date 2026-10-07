@@ -1,4 +1,5 @@
 import json
+import re
 from types import SimpleNamespace
 
 from app.core.exceptions import SafeError
@@ -17,6 +18,15 @@ class MCPInputSchema:
         return SimpleNamespace(model_dump=lambda: dict(arguments))
 
 
+def tool_namespace(tool):
+    integration = (
+        re.sub(r"[^a-z0-9_]", "_", tool.metadata_json.get("integration", "generic").lower())[:24]
+        or "generic"
+    )
+    name = re.sub(r"[^a-zA-Z0-9_]", "_", tool.external_name)[:64] or "tool"
+    return "mcp." + integration + "." + name + "_" + tool.id.replace("-", "")
+
+
 class MCPToolAdapter:
     def __init__(self, service, tool, server):
         self.service, self.tool, self.server = service, tool, server
@@ -32,19 +42,8 @@ class MCPToolAdapter:
     async def policy(self, job, args):
         current = await self.service.owned.tool(self.tool.id)
         server = await self.service.owned.server(current.mcp_server_id)
-        rating = self.service.policy.classify(
-            server,
-            {
-                "name": current.external_name,
-                "description": current.description,
-                "inputSchema": current.input_schema_json,
-                "outputSchema": current.output_schema_json,
-            },
-        )
-        if not rating["reviewed"] or current.metadata_json.get("fingerprint") != rating.get(
-            "fingerprint"
-        ):
-            raise SafeError("MCP_REVIEW_REQUIRED")
+        self.service.reviewed_rating(server, current)
+        await self.service.require_scopes(current, server)
         self.service.policy.enforce(current, args, job.mode)
         return (
             current.requires_approval,

@@ -8,7 +8,7 @@ from jsonschema.exceptions import SchemaError, ValidationError
 from app.core.exceptions import SafeError
 
 CRITICAL = re.compile(
-    r"(?i)(?:\bshell\b|\bssh\b|terminal|docker.?exec|kubectl.?exec|kubernetes.?exec|production.?deploy|deploy.?production|\bsecrets?\b|password|credentials?|billing|privilege|administrat|delete.?account|destructive|\bdrop\b|\btruncate\b)"
+    r"(?i)(?:\bapi.?keys?\b|\baccess.?tokens?\b|\brefresh.?tokens?\b|\badmin\b|\bexec(?:ute)?\b|\bshell\b|\bssh\b|terminal|docker.?exec|kubectl.?exec|kubernetes.?exec|production.?deploy|deploy.?production|\bsecrets?\b|password|credentials?|billing|privilege|administrat|delete.?account|destructive|\bdrop\b|\btruncate\b)"
 )
 DATABASE_WRITES = re.compile(
     r"(?i)\b(?:DROP|TRUNCATE|ALTER|DELETE|UPDATE|INSERT|MERGE|GRANT|REVOKE|CALL|EXECUTE|COPY|VACUUM|DO)\b"
@@ -85,14 +85,23 @@ class MCPRiskPolicy:
         )
         if not isinstance(value, dict) or value.get("fingerprint") != expected:
             return {"risk": "HIGH", "reviewed": False, "approval": True, "capability": "UNKNOWN"}
+        integration = (
+            str(value.get("integration", "generic")).casefold().replace(" ", "_").replace("-", "_")
+        )
+        integration = {
+            "supabase": "database",
+            "github_mcp": "github",
+            "google_calendar": "calendar",
+            "google_drive": "drive",
+        }.get(integration, integration)
         capability = value.get("capability")
         if (
             capability not in {"READ", "SEARCH", "CREATE", "UPDATE", "SEND"}
-            or value.get("integration") == "github"
+            or integration == "github"
             and capability not in {"READ", "SEARCH"}
-            or value.get("integration") in {"railway", "vercel", "cloudflare"}
+            or integration in {"railway", "vercel", "cloudflare"}
             and capability not in {"READ", "SEARCH"}
-            or value.get("integration") == "database"
+            or integration == "database"
             and capability not in {"READ", "SEARCH"}
         ):
             return {
@@ -102,13 +111,19 @@ class MCPRiskPolicy:
                 "capability": capability,
             }
         risk = "LOW" if capability in {"READ", "SEARCH"} else "HIGH"
+        if (
+            capability == "CREATE"
+            and value.get("risk") == "MEDIUM"
+            and value.get("artifact") in {"DRAFT", "TEMPORARY"}
+        ):
+            risk = "MEDIUM"
         return {
             "risk": risk,
             "reviewed": True,
             "approval": risk != "LOW",
             "capability": capability,
             "required_scopes": value.get("required_scopes", []),
-            "integration": value.get("integration", "generic"),
+            "integration": integration,
             "fingerprint": expected,
         }
 
