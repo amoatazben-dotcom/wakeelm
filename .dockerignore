@@ -1,12 +1,10 @@
 .git
 .venv
 .env
-.env.*
-!.env.example
 storage
+admin-web/node_modules
+admin-web/dist
+admin-web/test-results
 __pycache__
 .pytest_cache
 .ruff_cache
-build
-dist
-*.egg-info

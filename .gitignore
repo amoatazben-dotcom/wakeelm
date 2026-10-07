@@ -12,3 +12,9 @@ dist/
 /storage/
 
 node_modules/
+
+admin-web/test-results/
+admin-web/playwright-report/
+*.enc
+
+test-results/

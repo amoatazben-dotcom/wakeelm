@@ -1,0 +1,5 @@
+[extend]
+useDefault = true
+[[allowlists]]
+description = "Generated dependencies, caches and redacted scanner evidence"
+paths = ['''(^|/)\.venv/''', '''(^|/)node_modules/''', '''(^|/)\.git/''', '''^docs/release-evidence/.*\.json$''', '''^admin-web/(dist|test-results|playwright-report)/''']
