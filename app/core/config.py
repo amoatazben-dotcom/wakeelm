@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     database_url: SecretStr
     redis_url: SecretStr
     master_encryption_key: SecretStr
+    master_encryption_previous_keys: list[SecretStr] = []
     bot_mode: Literal["polling", "webhook"] = "polling"
     bot_default_language: Literal["ar", "en"] = "ar"
     log_level: str = "INFO"
@@ -78,6 +79,31 @@ class Settings(BaseSettings):
     mcp_tool_policies: dict = {}  # admin reviewed URL + name + schema fingerprint policies
     mcp_oauth_clients: dict = {}  # admin-provisioned issuer -> public client ID
     integration_jobs_enabled: bool = True
+    admin_oidc_issuer: str | None = None
+    admin_oidc_authorize_url: str | None = None
+    admin_oidc_token_url: str | None = None
+    admin_oidc_jwks_url: str | None = None
+    admin_oidc_client_id: str | None = None
+    admin_oidc_client_secret: SecretStr | None = None
+    admin_oidc_audience: str | None = None
+    admin_require_mfa: bool = True
+    admin_session_seconds: int = Field(default=900, ge=60, le=3600)
+    admin_super_subjects: list[str] = []
+    global_daily_cost_cap: float = Field(default=100, gt=0)
+    provider_daily_cost_cap: float = Field(default=50, gt=0)
+    audit_retention_days: int = Field(default=365, ge=30)
+    artifact_retention_days: int = Field(default=30, ge=1)
+    memory_retention_days: int = Field(default=90, ge=1)
+    workspace_retention_days: int = Field(default=30, ge=1)
+    build_git_sha: str = "unknown"
+    build_timestamp: str = "unknown"
+
+    @field_validator("master_encryption_previous_keys")
+    @classmethod
+    def valid_previous_keys(cls, values):
+        for value in values:
+            Fernet(value.get_secret_value().encode())
+        return values
 
     @field_validator("master_encryption_key")
     @classmethod
@@ -98,6 +124,33 @@ class Settings(BaseSettings):
 
             if not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", self.webhook_secret.get_secret_value()):
                 raise ValueError("Invalid webhook secret format")
+        if self.app_env not in {"development", "test", "staging", "production"}:
+            raise ValueError("Invalid APP_ENV")
+        oidc = [
+            self.admin_oidc_issuer,
+            self.admin_oidc_authorize_url,
+            self.admin_oidc_token_url,
+            self.admin_oidc_jwks_url,
+            self.admin_oidc_client_id,
+            self.admin_oidc_audience,
+        ]
+        if any(oidc) and not all(oidc):
+            raise ValueError("Complete OIDC configuration required")
+        if any(oidc):
+            from urllib.parse import urlsplit
+
+            for url in oidc[:4]:
+                parts = urlsplit(url)
+                if (
+                    parts.scheme != "https"
+                    or not parts.hostname
+                    or parts.username
+                    or parts.password
+                    or parts.fragment
+                ):
+                    raise ValueError("OIDC endpoints require credential-free HTTPS")
+            if not self.public_base_url or not self.public_base_url.startswith("https://"):
+                raise ValueError("Admin OIDC requires HTTPS PUBLIC_BASE_URL")
         return self
 
     @property

@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Request
 from redis.asyncio import Redis
 
 from app.agent.worker import AgentWorker
+from app.api.admin import router as admin_router
 from app.api.health import router
 from app.api.integrations import router as integrations_router
 from app.bot.dispatcher import create_dispatcher
@@ -30,16 +31,25 @@ def create_app(settings=None, start_bot=True):
         engine, sessions = database(settings.async_database_url)
         redis = Redis.from_url(settings.redis_url.get_secret_value())
         bot = Bot(settings.telegram_bot_token.get_secret_value())
+        from app.integrations.http import IntegrationHTTP
+
+        IntegrationHTTP.runtime_redis = redis
         app.state.engine, app.state.redis = engine, redis
         app.state.sessions = sessions
         app.state.settings = settings
-        app.state.secrets = SecretManager(settings.master_encryption_key.get_secret_value())
+        app.state.secrets = SecretManager(
+            settings.master_encryption_key.get_secret_value(),
+            [key.get_secret_value() for key in settings.master_encryption_previous_keys],
+        )
         app.state.limits = Limits(redis)
         app.state.bot = bot
         dispatcher = create_dispatcher(
             redis,
             sessions,
-            SecretManager(settings.master_encryption_key.get_secret_value()),
+            SecretManager(
+                settings.master_encryption_key.get_secret_value(),
+                [key.get_secret_value() for key in settings.master_encryption_previous_keys],
+            ),
             SafeHTTP(settings.provider_timeout, settings.max_response_bytes),
             Limits(redis),
             settings,
@@ -77,10 +87,22 @@ def create_app(settings=None, start_bot=True):
                 pass
 
         try:
+            if settings.app_env in {"production", "staging"}:
+                from sqlalchemy import text
+
+                async with engine.connect() as connection:
+                    await connection.execute(text("SELECT 1"))
+                await redis.ping()
             if start_bot:
                 worker = AgentWorker(
                     sessions,
-                    SecretManager(settings.master_encryption_key.get_secret_value()),
+                    SecretManager(
+                        settings.master_encryption_key.get_secret_value(),
+                        [
+                            key.get_secret_value()
+                            for key in settings.master_encryption_previous_keys
+                        ],
+                    ),
                     SafeHTTP(settings.provider_timeout, settings.max_response_bytes),
                     Limits(redis),
                     settings,
@@ -116,22 +138,72 @@ def create_app(settings=None, start_bot=True):
                 with suppress(asyncio.CancelledError, Exception):
                     await task
             await bot.session.close()
+            IntegrationHTTP.runtime_redis = None
             await redis.aclose()
             await engine.dispose()
 
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
+    from app.platform.hardening import RequestBodyLimit
+
+    app.add_middleware(RequestBodyLimit)
+    from fastapi.responses import JSONResponse
+
+    from app.core.exceptions import SafeError
+
+    @app.exception_handler(SafeError)
+    async def safe_error(request, error):
+        return JSONResponse(
+            {"error": error.code}, status_code=429 if error.code == "RATE_LIMITED" else 403
+        )
+
+    app.include_router(admin_router)
+    from pathlib import Path
+
+    from fastapi.staticfiles import StaticFiles
+
+    dashboard = Path(__file__).resolve().parent.parent / "admin-web" / "dist"
+    if dashboard.is_dir():
+        app.mount("/admin-web", StaticFiles(directory=dashboard, html=True), name="admin-web")
     app.include_router(router)
     app.include_router(integrations_router)
 
     @app.middleware("http")
     async def request_id(request, call_next):
+        import time
+
+        from app.platform.telemetry import metric, trace_context
+
         request_id = uuid.uuid4().hex
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = request_id
-        structlog.get_logger().info(
-            "request", request_id=request_id, operation="http", status=response.status_code
-        )
-        return response
+        started = time.monotonic()
+        with trace_context(request.headers.get("traceparent"), request_id=request_id) as trace:
+            structlog.contextvars.bind_contextvars(service="bot-api", environment=settings.app_env)
+            try:
+                response = await call_next(request)
+                response.headers["X-Request-ID"] = request_id
+                response.headers["traceparent"] = f"00-{trace['trace_id']}-{trace['span_id']}-01"
+                response.headers["X-Content-Type-Options"] = "nosniff"
+                response.headers["X-Frame-Options"] = "DENY"
+                response.headers["Referrer-Policy"] = "no-referrer"
+                response.headers["Content-Security-Policy"] = (
+                    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+                )
+                if settings.app_env in {"production", "staging"}:
+                    response.headers["Strict-Transport-Security"] = (
+                        "max-age=31536000; includeSubDomains"
+                    )
+                if request.url.path.startswith("/admin"):
+                    response.headers["Cache-Control"] = "no-store"
+                metric("api_requests_total")
+                structlog.get_logger().info(
+                    "request",
+                    request_id=request_id,
+                    operation="http",
+                    status=response.status_code,
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                )
+                return response
+            finally:
+                structlog.contextvars.clear_contextvars()
 
     @app.post("/telegram/webhook")
     async def webhook(request: Request):
@@ -153,6 +225,9 @@ def create_app(settings=None, start_bot=True):
             update = Update.model_validate_json(body)
         except ValueError:
             raise HTTPException(400) from None
+        from app.platform.telemetry import metric
+
+        metric("telegram_updates_total")
         # Webhook retry deduplication and processing lock across replicas.
         key = f"telegram:{app.state.bot.id}:update:{update.update_id}"
         if not await app.state.redis.set(key, "processing", nx=True, ex=300):

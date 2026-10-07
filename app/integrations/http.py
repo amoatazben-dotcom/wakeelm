@@ -96,10 +96,40 @@ class PinnedHTTPTransport(httpx.AsyncBaseTransport):
 
 
 class IntegrationHTTP:
+    runtime_redis = None
+
     def __init__(self, timeout=30, limit=2000000, transport=None):
         self.timeout, self.limit, self.transport = timeout, limit, transport
 
     async def request(self, method, url, headers=None, json_body=None, form=None):
+        import hashlib
+
+        from app.platform.circuit import CircuitBreaker
+        from app.platform.telemetry import TRACE
+
+        key = hashlib.sha256(
+            (origin(url) + str(TRACE.get().get("user_id", "system"))).encode()
+        ).hexdigest()[:24]
+        breaker = (
+            CircuitBreaker(self.runtime_redis, "integration:" + key) if self.runtime_redis else None
+        )
+        if breaker:
+            await breaker.before()
+        try:
+            result = await self._request(method, url, headers, json_body, form)
+            if breaker:
+                await breaker.success()
+            return result
+        except SafeError as error:
+            if breaker and error.code in {"OFFLINE", "TIMEOUT", "REMOTE_FAILED", "RATE_LIMITED"}:
+                await breaker.failure()
+            raise
+
+    async def _request(self, method, url, headers=None, json_body=None, form=None):
+        from app.platform.telemetry import metric, trace_headers
+
+        headers = {**trace_headers(), **(headers or {})}
+        metric("github_calls" if "api.github.com/" in url else "mcp_calls")
         try:
             async with asyncio.timeout(self.timeout):
                 async with httpx.AsyncClient(

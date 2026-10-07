@@ -33,6 +33,9 @@ class SafeHTTP:
         self.timeout, self.max_bytes = timeout, max_bytes
 
     async def request(self, method, url, headers, payload=None):
+        from app.platform.telemetry import trace_headers
+
+        headers = {**trace_headers(), **headers}
         await public_addresses(url)  # also blocks numeric literals bypassing resolver
         connector = aiohttp.TCPConnector(resolver=PinnedResolver(), use_dns_cache=False)
         try:

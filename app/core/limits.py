@@ -9,7 +9,7 @@ class Limits:
         self.redis = redis
 
     async def cooldown(self, key, seconds):
-        if not await self.redis.set("limit:" + key, "1", nx=True, ex=seconds):
+        if not await self.redis.set("limit:" + key, "1", nx=True, px=max(1, int(seconds * 1000))):
             raise SafeError("RATE_LIMITED")
 
     @asynccontextmanager
