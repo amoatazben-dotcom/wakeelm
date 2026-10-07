@@ -24,6 +24,7 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     buildTypes { release { isMinifyEnabled = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt")) } }
     testOptions { unitTests.isReturnDefaultValues = true }
+    bundle { language { enableSplit = false } }
     lint { abortOnError = true }
 }
 kotlin { jvmToolchain(17) }
