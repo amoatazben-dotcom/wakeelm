@@ -62,7 +62,7 @@ async def test_full_lifecycle(stack):
     assert await models.test(page[0].id) is None
     await stack.session.flush()
     assert page[0].status == "AVAILABLE"
-    assert await stack.session.scalar(select(func.count()).select_from(ModelHealthCheck)) == 1
+    assert await stack.session.scalar(select(func.count()).select_from(ModelHealthCheck)) == 2
     await stack.service.disable(provider.id)
     await stack.session.flush()
     await stack.redis.delete(f"limit:chat:{stack.user.id}")

@@ -12,8 +12,12 @@ from app.services.audit_service import audit
 
 
 class ModelService:
-    def __init__(self, providers):
+    def __init__(self, providers, settings=None):
         self.providers = providers
+        self.settings = settings
+        from app.routing.gateway import RoutingGateway
+
+        self.routing = RoutingGateway(self)
         self.session, self.user_id, self.owned = (
             providers.session,
             providers.user_id,
@@ -68,6 +72,21 @@ class ModelService:
         audit(self.session, self.user_id, "ACTIVE_MODEL_CHANGED", "model", model.id)
 
     async def completion(self, model, text, test=False, max_tokens=256):
+        if test:
+            return await self._completion(model, text, test=True, max_tokens=max_tokens)
+        from app.indexing.chunker import token_estimate
+
+        return await self.routing.execute(
+            model,
+            lambda chosen: self._completion(chosen, text, max_tokens=max_tokens),
+            token_estimate(text),
+            max_tokens,
+        )
+
+    async def route(self, text, required=None, context_size=0):
+        return await self.routing.select(text, required, context_size)
+
+    async def _completion(self, model, text, test=False, max_tokens=256):
         provider = await self.owned.provider(model.provider_id)
         if provider.status == "DISABLED":
             raise SafeError("DISABLED")
@@ -83,6 +102,18 @@ class ModelService:
         )
 
     async def agent_completion(self, model, messages, tools=None):
+        import json
+
+        from app.indexing.chunker import token_estimate
+
+        return await self.routing.execute(
+            model,
+            lambda chosen: self._agent_completion(chosen, messages, tools),
+            token_estimate(json.dumps(messages)),
+            1800,
+        )
+
+    async def _agent_completion(self, model, messages, tools=None):
         provider = await self.owned.provider(model.provider_id)
         if provider.status == "DISABLED":
             raise SafeError("DISABLED")
@@ -143,16 +174,7 @@ class ModelService:
         if not text or len(text) > 16000:
             raise SafeError("INVALID_INPUT")
         await self.providers.limits.cooldown(f"chat:{self.user_id}", 3)
-        setting = await self.session.scalar(
-            select(UserSetting).where(
-                UserSetting.user_id == self.user_id, UserSetting.key == "active_model"
-            )
-        )
-        if setting is None:
-            raise SafeError("NO_ACTIVE_MODEL")
-        model = await self.owned.model(setting.value_json["active_model_id"])
-        if model.status == "UNSUPPORTED":
-            raise SafeError("DISABLED")
+        model = await self.route(text)
         content, usage = await self.completion(model, text)
         structlog.get_logger().info(
             "chat",

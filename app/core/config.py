@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     webhook_secret: SecretStr | None = None
     provider_timeout: float = Field(default=30, gt=0, le=60)
     max_response_bytes: int = Field(default=2_000_000, ge=1024, le=10_000_000)
+    max_model_fallbacks: int = Field(default=2, ge=0, le=5)
+    max_job_model_calls: int = Field(default=12, ge=1, le=50)
+    max_job_tokens: int = Field(default=100000, ge=1000, le=1000000)
+    max_job_cost: float = Field(default=1, gt=0, le=100)
     max_models: int = Field(default=1000, ge=1, le=10000)
 
     workspace_storage_root: str = "storage/workspaces"
