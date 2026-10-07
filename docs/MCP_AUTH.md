@@ -11,3 +11,5 @@ The token response must be Bearer with bounded lifetime and scopes no broader th
 The UI's OAuth action asks for explicit new scopes; the application never silently expands them. Unknown issuers have no client and fail closed. Authorization metadata using cross-origin endpoints, multiple issuers, alternative discovery layouts or registration requirements outside this explicit profile needs a reviewed future adapter. The callback base must be an operator-controlled HTTPS domain; register that exact callback in the issuer.
 
 API access logs are disabled by start.sh because URLs contain state/code/tickets. Reverse proxy and external observability must also avoid query logging. State payloads are encrypted; only the SHA256 of state/nonce is stored for validation. Controlled tests verify PKCE, redirects, issuer checks, nonce, replay, expiry, encryption/isolation, refresh failure and returned-scope escalation.
+
+MCP_CALLBACK_BASE_URL is a supported alias for INTEGRATIONS_CALLBACK_BASE_URL. After explicit authorization the user may resume the same failed auth job/step; existing deadlines and policy checks remain in effect. Auth failures are safely audited.

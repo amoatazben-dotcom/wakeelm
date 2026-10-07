@@ -11,3 +11,5 @@ Push must reference the same committed SHA, a clean tree and the recorded digest
 An explicit `issue #123` task loads its title/body with `GITHUB_ISSUE` + `UNTRUSTED` labels. Native issue/PR reads and all tool observations have lower trust; an instruction embedded in them cannot approve actions or change tool policy.
 
 On a normal Railway app the command sandbox remains disabled. Repository publishing consequently cannot satisfy the default validation requirement until a trusted external validator is available. Disabling `GIT_REQUIRE_VALIDATION` is an explicit operator override, used only in controlled Git fixtures, and weakens the production policy.
+
+PR bodies generate the required Summary/Changes/Validation/Risks sections from the user summary, committed files and stored validation statuses. Approval cards include a downloadable diff against the recorded base, so committed changes remain visible at push approval. Stale-base failures offer explicit import of the current base for review.

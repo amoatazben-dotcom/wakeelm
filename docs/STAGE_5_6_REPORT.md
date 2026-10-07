@@ -1,6 +1,6 @@
 # تقرير تنفيذ المرحلتين 5 و6
 
-تم تنفيذ التكاملات واختبارها محليًا. الاختبار النهائي: **199 اختبارًا ناجحًا** على Python 3.13.15، يشمل PostgreSQL 17 وRedis 7 وDocker وخادم MCP مضبوطًا يستخدم SDK الرسمي. اختبار GitHub App على حساب حي ونشر Railway لم يُنفذا؛ يلزمان إعدادات الحساب ومرحلة التشغيل التي طلب المستخدم تأجيلها.
+تم تنفيذ التكاملات واختبارها محليًا. الاختبار النهائي: **207 اختبارًا ناجحًا** على Python 3.13.15، يشمل PostgreSQL 17 وRedis 7 وDocker وخادم MCP مضبوطًا يستخدم SDK الرسمي. اختبار GitHub App على حساب حي ونشر Railway لم يُنفذا؛ يلزمان إعدادات الحساب ومرحلة التشغيل التي طلب المستخدم تأجيلها.
 
 1. **الملفات المنشأة:** القائمة التفصيلية في نهاية التقرير: وحدات GitHub/Git/MCP والتكاملات وواجهات OAuth/Webhooks وترحيل واختبارات ووثائق.
 2. **الملفات المعدلة:** ربط الوحدات بالطابور والمنسق وواجهة تيليجرام والنماذج والإعدادات والترجمات والتوثيق؛ القائمة أدناه.
@@ -23,7 +23,7 @@
 19. **سياسة MCP:** READ/SEARCH مراجعة منخفضة الخطورة؛ CREATE/UPDATE/SEND عالية مع موافقة في WORKSPACE؛ مجهولة معطلة؛ shell/SSH/secrets/admin/billing/production deploy محظورة؛ قاعدة البيانات structured read فقط؛ GitHub MCP/cloud deploy providers قراءة فقط. تغيير schema/description يلزم إعادة مراجعة. ToolRouter يعرض حتى ثمانية schemas ملائمة بدل كشف الجميع.
 20. **TypeScript:** لم يُنفذ؛ لا موفر مطلوب أثبت نقصًا جوهريًا في Python. لا خدمة إضافية ولا أسرار مشتركة بين runtimes.
 21. **سجل التكاملات:** GitHub native منفذ؛ ملفات سياسة GitHub MCP/Supabase/Drive/Gmail/Calendar/Slack/Notion/Linear/Jira/Railway/Cloudflare/Vercel. هذه profiles لإمكانات endpoints يضيفها المستخدم، وليست حسابات متصلة أو adapters خاصة منفذة.
-22. **التحقق الأمني:** 199 passed بلا skipped، تحذير deprecation واحد من FastAPI TestClient/httpx. Ruff lint/format وgit diff --check ناجحة، build wheel/sdist ناجح، migration round-trip/check ناجح. Transport اختبار TLS فعلي بشهادة اختبار موثوقة يرفض redirects ويضبط الأصل والحجم والوقت؛ SSRF الإنتاجي يرفض private/metadata/internal URLs. اختبارات SDK تمنع أدوات خطرة، إعادة استخدام/عزل الموافقات والتصعيد وتتحقق من audit. اختبارات Docker السابقة تؤكد منع الشبكة والأسرار ومسارات المضيف وتعمل بعد هذه التعديلات.
+22. **التحقق الأمني:** 207 passed بلا skipped، تحذير deprecation واحد من FastAPI TestClient/httpx. Ruff lint/format وgit diff --check ناجحة، build wheel/sdist ناجح، migration round-trip/check ناجح. Transport اختبار TLS فعلي بشهادة اختبار موثوقة يرفض redirects ويضبط الأصل والحجم والوقت؛ SSRF الإنتاجي يرفض private/metadata/internal URLs. اختبارات SDK تمنع أدوات خطرة، إعادة استخدام/عزل الموافقات والتصعيد وتتحقق من audit. اختبارات Docker السابقة تؤكد منع الشبكة والأسرار ومسارات المضيف وتعمل بعد هذه التعديلات.
 23. **Railway:** تصميم الخدمة Python bot-api + PostgreSQL + Redis + volume خاص؛ لا sidecars لغات إضافية. يلزم Git في image Linux وHTTPS callbacks. يبقى sandbox disabled حتى validator خارجي موثوق. لم يُنشأ أو يُشغل أو يُنشر أي شيء في Railway، احترامًا لتأجيل المستخدم.
 24. **الفرع:** `stage-5-6-github-mcp-hybrid` في مستودع `amoatazben-dotcom/wakeelm`، مع رفع التغييرات إلى main وفق التفويض السابق بعد التحقق.
 25. **قائمة commits:** تقسيم مقصود إلى foundation/schema/dependencies، native GitHub، Git runtime، MCP SDK/policy/auth، worker/registry bridge، Telegram/API، الاختبارات، التوثيق، وعقود الإدخال الصارمة. الرسائل الفعلية تُطابق القائمة في تاريخ الفرع، دون commit ضخم واحد؛ قد تختلف SHA المحلية عن المنشورة لأن النشر عبر حساب GitHub المتصل.
@@ -123,3 +123,16 @@
 - `test: verify GitHub MCP OAuth and transport security`
 - `docs: document stages 5 and 6 architecture setup and verified limits`
 - `feat: finalize strict integration tool input contracts`
+
+## استكمال مطابقات البرومبت
+
+أضيف اكتشاف وعرض resource templates مع تسجيل capabilities الخاصة بـlogging/tasks كما يعلنها الخادم، أسماء أدوات mcp.<integration>.<tool> مع هوية ثابتة وتوافق الخطط القديمة، سياسة MEDIUM للـdraft/temporary المراجع، فحص تغير سياسة المسؤول بجانب schema، وأحداث المصادقة الفاشلة وطلب الأداة وفشل الكتابة البعيدة. واجهة تيليجرام تختار النقل صراحة، وتعرض منح الصلاحية/الإلغاء واستئناف المهمة نفسها بعد المصادقة، وتحمل فرق المستودع من الموافقة. وصف PR يولد أقسام Summary/Changes/Validation/Risks. MCP_CALLBACK_BASE_URL مدعوم كاسم بديل.
+
+اختبار قبول مترابط يشغل Git حقيقيًا وPatchEngine وأدوات validation داخل Docker، ثم موافقات commit/push/PR منفصلة. اختبار App يتحقق من JWT فعلي بـRS256 ونطاق repository_ids دون حفظ رمز التركيب. أضيفت اختبارات templates/namespace/policy drift/draft/offline/scope/resume. [جدول المطابقة الكامل](STAGE_5_6_ACCEPTANCE.md) يربط أقسام البرومبت بالتنفيذ والدليل. تشغيل logging/task APIs وتوسيع القوالب غير مكشوف؛ المطلوب اكتشاف تلك الإمكانات فقط. القبول الحي ما زال يتطلب بيانات الحساب، والنشر مؤجل.
+
+رسائل commits لاستكمال المطابقة:
+
+- `feat: complete MCP capability discovery namespaces and policy review`
+- `feat: finish approval diffs PR reports and explicit auth recovery`
+- `test: verify complete repository acceptance and remaining MCP requirements`
+- `docs: map full stage 5 and 6 acceptance to verified implementation`

@@ -19,3 +19,5 @@ Environment dict/list values use JSON. Exact URL + external tool name identify t
 Discovery, resource and prompt reads reuse the existing durable AgentJob queue. Dynamic tools execute through ToolRegistry → ToolPolicyEngine → MCPToolAdapter → MCPService, with existing mode, ownership, cancellation, deadline, call-count and approval controls. Integration maintenance does not require an active AI model; model-based tasks do.
 
 Network/size/time failures produce safe codes. The controlled official-SDK test server verifies discovery, tools, resources/prompts, approvals, auth and refresh. Real external services require their own endpoints and approved policies; no Gmail/Calendar/etc connection is claimed by merely listing registry profiles.
+
+Resource templates are discovered through resources/templates/list and displayed. Logging/task capabilities are retained from initialize when advertised, without enabling server-originated execution. Tool namespaces are mcp.<integration>.<external-tool>_<immutable-tool-id>, with compatibility for old stored opaque-name steps. Operator-reviewed CREATE DRAFT/TEMPORARY tools may have MEDIUM risk and still require approval.

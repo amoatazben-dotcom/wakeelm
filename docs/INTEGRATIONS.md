@@ -5,3 +5,5 @@
 Deployment/cloud/database profiles remain read only. A reviewed server/tool schema is still required. The generic MCP client can interact with a compatible endpoint, but it does not make every listed provider compatible with this restricted OAuth/discovery profile. Native GitHub alone handles repository writes.
 
 All integration data has user-owned SQL records and encrypted credentials. Long discovery/import/auth follow-up operations reuse AgentJob and the existing worker lease, workspace lock, cancellation, notification, job-status UI and time bounds. There is no integration-specific orchestrator or ungoverned execution engine. FastAPI only implements bounded OAuth callback/webhook work and enqueues follow-up discovery; Telegram does not block on clone/discovery/model execution.
+
+See STAGE_5_6_ACCEPTANCE.md for the prompt-to-implementation verification mapping.
