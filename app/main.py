@@ -159,6 +159,26 @@ def create_app(settings=None, start_bot=True):
             {"error": error.code}, status_code=429 if error.code == "RATE_LIMITED" else 403
         )
 
+    from fastapi.exception_handlers import request_validation_exception_handler
+    from fastapi.exceptions import RequestValidationError
+
+    from app.api.client import router as client_router
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request, error):
+        if request.url.path.startswith("/api/v1/"):
+            # FastAPI otherwise echoes Pydantic's input, including submitted secrets.
+            return JSONResponse({"error": "INVALID_INPUT"}, status_code=422)
+        return await request_validation_exception_handler(request, error)
+
+    @app.middleware("http")
+    async def client_privacy(request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/api/v1/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
+    app.include_router(client_router)
     app.include_router(admin_router)
     from pathlib import Path
 
