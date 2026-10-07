@@ -1,6 +1,7 @@
 package com.wakeelm.client.core
 
 import android.content.Context
+import android.annotation.SuppressLint
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -48,5 +49,6 @@ interface SessionStorage { fun read(): Tokens?; fun write(tokens: Tokens); fun r
         return true
     }
     @Synchronized override fun clearIf(expected: String) { if(read()?.refresh_token == expected) clear() }
+    @SuppressLint("ApplySharedPref") // Durable erasure must complete before another account loads.
     @Synchronized override fun clear() { prefs.edit().clear().commit() }
 }
