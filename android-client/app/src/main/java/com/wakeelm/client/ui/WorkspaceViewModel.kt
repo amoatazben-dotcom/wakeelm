@@ -14,7 +14,7 @@ data class WorkspaceState(val restoring: Boolean = true, val signedIn: Boolean =
     private val auth: AuthRepository, val preferences: PreferencesStore,
     private val providersRepo: ProviderRepository, private val modelsRepo: ModelRepository,
     private val conversationsRepo: ConversationRepository, private val send: SendMessageUseCase,
-    private val api: ClientApi, network: NetworkMonitor,
+    private val api: ClientApi, network: NetworkStatus,
 ): ViewModel() {
     private val mutable = MutableStateFlow(WorkspaceState())
     val state = mutable.asStateFlow()
