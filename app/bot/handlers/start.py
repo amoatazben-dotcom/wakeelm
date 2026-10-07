@@ -130,8 +130,22 @@ async def language(event, user, session):
     await say(event, tr(user.language, "common.saved"), menu(user.language))
 
 
+async def mobile_login(event, user, providers, state):
+    from app.services.mobile_auth import MobileAuth
+
+    await state.clear()
+    code = await MobileAuth(providers.limits.redis).pair(user.id)
+    text = (
+        "رمز تسجيل دخول Android صالح لخمس دقائق ولمرة واحدة. لا تشاركه:\n"
+        if user.language == "ar"
+        else "Android sign-in code, valid for five minutes and one use. Do not share:\n"
+    )
+    await event.answer(text + code, protect_content=True)
+
+
 def build_router():
     router = Router()
+    router.message.register(mobile_login, Command("login"))
     router.message.register(
         commands, Command("start", "help", "settings", "providers", "models", "cancel")
     )
