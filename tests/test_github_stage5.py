@@ -381,3 +381,190 @@ async def test_push_workflows_require_operator_review(stack, tmp_path, monkeypat
                 arguments={"branch": "agent/test", "expected_head": s.head},
             )
         )
+
+
+async def test_valid_app_jwt_repository_scoped_installation_token(stack, tmp_path, monkeypatch):
+    from datetime import timedelta
+
+    import jwt
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from pydantic import SecretStr
+
+    s = await stack_repo(stack, tmp_path, monkeypatch)
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    s.w.settings.github_app_id = 1
+    s.w.settings.github_app_private_key = SecretStr(
+        key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ).decode()
+    )
+    original = s.http.request
+
+    async def request(method, url, headers=None, json_body=None, form=None):
+        if url.endswith("/access_tokens"):
+            claims = jwt.decode(
+                headers["Authorization"].removeprefix("Bearer "),
+                key.public_key(),
+                algorithms=["RS256"],
+            )
+            assert claims["iss"] == "1" and claims["exp"] - claims["iat"] <= 600
+            assert json_body["repository_ids"] == [77]
+            assert (
+                json_body["permissions"]["actions"] == "read"
+                and "administration" not in json_body["permissions"]
+            )
+            return {
+                "token": "ephemeral-installation-only",
+                "expires_at": (now() + timedelta(minutes=30)).isoformat(),
+            }
+        return await original(method, url, headers, json_body, form)
+
+    s.http.request = request
+    connection = await s.connections.create_app(
+        11, {"id": 1234, "login": "tester"}, "user-oauth-only"
+    )
+    await s.connections.sync(connection.id)
+    repo = await stack.session.scalar(
+        select(GitHubRepository).where(GitHubRepository.github_connection_id == connection.id)
+    )
+    _, _, service = await s.connections.verify_repository(repo)
+    assert service.token == "ephemeral-installation-only"
+    assert stack.secrets.decrypt(connection.encrypted_token) == "user-oauth-only"
+
+
+async def test_repository_complete_patch_validation_approval_push_pr(stack, tmp_path, monkeypatch):
+    import hashlib
+    import os
+    import subprocess
+
+    from app.agent.patches import PatchEngine
+    from app.sandbox.runner import DockerSandboxRunner
+
+    if not os.getenv("TEST_SANDBOX_IMAGE"):
+        pytest.skip("Real isolated validator image required")
+    s = await stack_repo(stack, tmp_path, monkeypatch)
+    await s.git._run("checkout", "main")
+    s.w.storage.write_file(
+        s.w.user_id,
+        s.job.workspace_id,
+        "test_main.py",
+        b"from main import VALUE\ndef test_value():\n    assert VALUE >= 1\n",
+    )
+    await s.git.stage_paths(["test_main.py"])
+    await s.git.commit("test: fixture validation")
+    bare = tmp_path / "acceptance-remote.git"
+    subprocess.run(
+        ["git", "clone", "--bare", str(s.git.gitdir), str(bare)], check=True, capture_output=True
+    )
+
+    class FixtureGit(ControlledGitService):
+        async def _run(self, *args, token=None):
+            if args and args[0] in {"fetch", "push"}:
+                args = (
+                    "-c",
+                    "protocol.file.allow=always",
+                    *(str(bare) if arg == "origin" else arg for arg in args),
+                )
+            return await super()._run(*args, token=token)
+
+    service = RepositoryService(s.w, s.connections, FixtureGit)
+    workspace = await service.import_repository(s.repo.id)
+    job = await s.agents.create(workspace.id, "WORKSPACE", "Fix VALUE")
+    await service.prepare(job)
+    patch = PatchEngine(s.w, job)
+    proposed = await patch.propose(
+        {
+            "edits": [
+                {
+                    "kind": "exact",
+                    "path": "main.py",
+                    "expected_sha256": hashlib.sha256(b"VALUE = 1\n").hexdigest(),
+                    "old_text": "VALUE = 1",
+                    "new_text": "VALUE = 2",
+                }
+            ]
+        }
+    )
+    await patch.apply(proposed["change_set_id"])
+    s.w.settings.git_require_validation = True
+    s.w.settings.sandbox_backend = "docker"
+    s.w.settings.sandbox_image = os.environ["TEST_SANDBOX_IMAGE"]
+    registry = ToolRegistry(s.w, job, never, DockerSandboxRunner(s.w.settings))
+    registry.repositories = service
+
+    async def approved(request):
+        with pytest.raises(ApprovalPending):
+            await registry.execute(request)
+        value = (await s.agents.pending(job.id))[0]
+        await s.agents.approvals.decide(value.id, True)
+        result = await registry.execute(request)
+        job.current_step += 1
+        return result
+
+    check = await approved(
+        ToolRequest(tool_name="validation.run", arguments={"command_id": "python_tests"})
+    )
+    assert check["status"] == "PASSED"
+    commit = await approved(
+        ToolRequest(
+            tool_name="git.commit",
+            arguments={"message": "fix: value", "expected_files": ["main.py"]},
+        )
+    )
+    link, _, _, git = await service.context(workspace.id)
+    assert "+VALUE = 2" in await git.diff(link.base_commit_sha)
+    await approved(
+        ToolRequest(
+            tool_name="git.push_branch",
+            arguments={"branch": link.working_branch, "expected_head": commit["sha"]},
+        )
+    )
+    pr = await approved(
+        ToolRequest(
+            tool_name="github.create_pull_request",
+            arguments={"title": "Fix value", "body": "Correct value handling", "draft": True},
+        )
+    )
+    assert pr["number"] == 8
+    payload = next(
+        call[3]
+        for call in reversed(s.http.calls)
+        if call[0] == "POST" and call[1].endswith("/pulls")
+    )
+    assert all(
+        section in payload["body"]
+        for section in ["## Summary", "## Changes", "## Validation", "## Risks / Notes", "PASSED"]
+    )
+
+
+async def test_remote_write_failure_is_audited_without_credentials(stack, tmp_path, monkeypatch):
+    from app.db.models import AuditLog
+
+    s = await stack_repo(stack, tmp_path, monkeypatch)
+    s.w.storage.write_file(s.w.user_id, s.job.workspace_id, "main.py", b"VALUE = 2\n")
+    committed = await s.service.commit(s.job, "fix: value", ["main.py"], approved=True)
+
+    async def failed(*args):
+        raise SafeError("REMOTE_FAILED")
+
+    monkeypatch.setattr(s.git, "push_branch", failed)
+    registry = ToolRegistry(s.w, s.job, never)
+    registry.repositories = s.service
+    request = ToolRequest(
+        tool_name="git.push_branch",
+        arguments={"branch": "agent/test", "expected_head": committed["sha"]},
+    )
+    with pytest.raises(ApprovalPending):
+        await registry.execute(request)
+    await s.agents.approvals.decide((await s.agents.pending(s.job.id))[0].id, True)
+    with pytest.raises(SafeError, match="REMOTE_FAILED"):
+        await registry.execute(request)
+    events = list(
+        await stack.session.scalars(
+            select(AuditLog).where(AuditLog.action == "GITHUB_REMOTE_WRITE_FAILED")
+        )
+    )
+    assert len(events) == 1 and events[0].metadata_json == {"status": "REMOTE_FAILED"}

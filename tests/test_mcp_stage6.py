@@ -351,3 +351,98 @@ async def test_sdk_operation_deadline(mcp_stack):
     m.cfg.mcp_call_timeout_seconds = 0.01
     with pytest.raises(SafeError, match="TIMEOUT"):
         await m.client.discover(m.value.server_url)
+
+
+async def test_resource_templates_semantic_namespace_and_policy_drift(stack, mcp_stack):
+    m = mcp_stack
+    assert (
+        m.value.capabilities_json["resource_templates"][0]["uriTemplate"] == "test://project/{name}"
+    )
+    tool = await review(m, "read_record")
+    registry = await registry_for(m, stack, "READ_ONLY")
+    from app.mcp.adapter import tool_namespace
+
+    name = tool_namespace(tool)
+    assert name.startswith("mcp.calendar.read_record_")
+    assert name.replace(".", "__") in {x["function"]["name"] for x in registry.schemas()}
+    m.cfg.mcp_tool_policies[m.value.server_url + "#read_record"]["capability"] = "UPDATE"
+    with pytest.raises(SafeError, match="MCP_REVIEW_REQUIRED"):
+        await registry.execute(ToolRequest(tool_name=name, arguments={"query": "record"}))
+    assert not m.server.calls
+
+
+async def test_medium_draft_requires_review_and_approval(stack, mcp_stack):
+    m = mcp_stack
+    tool = await review(m, "write_mock", "CREATE")
+    m.cfg.mcp_tool_policies[m.value.server_url + "#write_mock"].update(
+        risk="MEDIUM", artifact="DRAFT"
+    )
+    await m.service.enable(tool.id)
+    assert tool.risk_level == "MEDIUM" and tool.requires_approval
+    with pytest.raises(SafeError, match="APPROVAL_REQUIRED"):
+        await m.service.call(tool, {"title": "draft"}, "WORKSPACE")
+
+
+async def test_offline_server_is_safe_and_no_secret_diagnostic(mcp_stack):
+    m = mcp_stack
+
+    class Offline(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request):
+            raise httpx.ConnectError("password=must-never-leak", request=request)
+
+    m.client.transport_factory = lambda _: Offline()
+    with pytest.raises(SafeError, match="OFFLINE") as error:
+        await m.client.discover(m.value.server_url)
+    assert "password" not in str(error.value)
+
+
+async def test_additional_scope_failure_bound_to_server_and_audited(stack, mcp_stack):
+    from sqlalchemy import select
+
+    from app.db.models import AuditLog
+    from app.mcp.adapter import tool_namespace
+
+    m = mcp_stack
+    tool = await review(m, "read_record")
+    m.cfg.mcp_tool_policies[m.value.server_url + "#read_record"]["required_scopes"] = ["read"]
+    await m.service.enable(tool.id)
+    registry = await registry_for(m, stack, "READ_ONLY")
+    with pytest.raises(SafeError, match="SCOPE_REQUIRED"):
+        await registry.execute(
+            ToolRequest(tool_name=tool_namespace(tool), arguments={"query": "record"})
+        )
+    assert registry.job.result_json["auth_server_id"] == m.value.id
+    actions = set(await stack.session.scalars(select(AuditLog.action)))
+    assert "MCP_TOOL_CALL_DENIED" in actions
+
+
+async def registry_for(m, stack, mode):
+    w = WorkspaceService(stack.session, stack.user.id, m.cfg, stack.secrets, Limits(stack.redis))
+    workspace = await w.ingest("main.py", b"VALUE = 1\n")
+    job = await AgentService(w, Models()).create(workspace.id, mode, "calendar record")
+    registry = ToolRegistry(w, job, never)
+    registry.mcp = m.service
+    await registry.hydrate()
+    return registry
+
+
+async def test_resume_auth_keeps_same_job_step_and_rechecks_scope(stack, mcp_stack):
+    m = mcp_stack
+    tool = await review(m, "read_record")
+    registry = await registry_for(m, stack, "READ_ONLY")
+    job = registry.job
+    job.status, job.failure_code = "FAILED", "SCOPE_REQUIRED"
+    job.result_json = {"auth_server_id": m.value.id}
+    await stack.session.commit()
+    service = AgentService(registry.workspaces, Models())
+    resumed = await service.resume_after_auth(job.id)
+    assert resumed.id == job.id and resumed.current_step == 0 and resumed.status == "QUEUED"
+    assert resumed.failure_code is None
+    from app.services.workspace_service import WorkspaceService
+
+    alien = AgentService(
+        WorkspaceService(stack.session, 999, m.cfg, stack.secrets, Limits(stack.redis)), Models()
+    )
+    with pytest.raises(SafeError, match="NOT_FOUND"):
+        await alien.resume_after_auth(job.id)
+    assert tool.is_enabled

@@ -73,6 +73,7 @@ async def test_telegram_github_pat_and_mcp_onboarding_are_private_queued_owned(
     await send(callback="menu:tools")
     await send(callback="mc:add:0")
     await send("Controlled MCP")
+    await send(callback="mc:transport:0")
     await send("https://mcp.example.test/mcp")
     server = await stack.session.scalar(select(MCPServer))
     assert server.user_id == stack.user.id and server.status == "PENDING"
