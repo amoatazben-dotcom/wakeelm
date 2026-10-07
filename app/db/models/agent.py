@@ -25,6 +25,8 @@ class AgentJob(TimestampMixin, Base):
     )
     status: Mapped[str] = mapped_column(String(30), default="QUEUED", index=True)
     mode: Mapped[str] = mapped_column(String(20))
+    kind: Mapped[str] = mapped_column(String(50), default="AGENT", server_default="AGENT")
+    payload_encrypted: Mapped[str | None] = mapped_column(Text)
     request_text: Mapped[str] = mapped_column(Text)  # encrypted user request
     plan_json: Mapped[dict] = mapped_column(JSON, default=dict)  # redacted public summary
     plan_encrypted: Mapped[str | None] = mapped_column(Text)

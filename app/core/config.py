@@ -46,6 +46,32 @@ class Settings(BaseSettings):
     max_patch_files: int = Field(default=10, ge=1, le=30)
     approval_ttl_seconds: int = Field(default=600, ge=30, le=3600)
 
+    github_app_id: int | None = None
+    github_app_private_key: SecretStr | None = None
+    github_client_id: str | None = None
+    github_client_secret: SecretStr | None = None
+    github_webhook_secret: SecretStr | None = None
+    github_write_enabled: bool = False
+    github_push_ci_reviewed: bool = False
+    github_comments_enabled: bool = False
+    github_bot_name: str = "Wakeelm Agent"
+    github_bot_email: str = "wakeelm-agent@users.noreply.github.com"
+    git_timeout_seconds: int = Field(default=90, ge=1, le=300)
+    git_max_output_bytes: int = Field(default=2000000, ge=1024, le=10000000)
+    git_max_repository_bytes: int = Field(default=100000000, ge=1000000, le=500000000)
+    git_max_memory_mb: int = Field(default=512, ge=64, le=2048)
+    git_require_validation: bool = True
+    integrations_callback_base_url: str | None = None
+    oauth_state_ttl_seconds: int = Field(default=600, ge=30, le=900)
+    mcp_allowed_transports: list[str] = ["streamable_http"]
+    mcp_connect_timeout_seconds: int = Field(default=10, ge=1, le=60)
+    mcp_call_timeout_seconds: int = Field(default=30, ge=1, le=120)
+    mcp_max_response_bytes: int = Field(default=1000000, ge=1024, le=5000000)
+    mcp_max_capabilities: int = Field(default=100, ge=1, le=1000)
+    mcp_tool_policies: dict = {}  # admin reviewed URL + name + schema fingerprint policies
+    mcp_oauth_clients: dict = {}  # admin-provisioned issuer -> public client ID
+    integration_jobs_enabled: bool = True
+
     @field_validator("master_encryption_key")
     @classmethod
     def valid_key(cls, value):

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base, TimestampMixin, now
 from app.db.models import (
     agent,  # noqa: F401
+    integrations,  # noqa: F401
     projects,  # noqa: F401
 )
 
