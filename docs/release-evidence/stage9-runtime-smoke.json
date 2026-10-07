@@ -1,0 +1,14 @@
+{
+  "uid": 10001,
+  "ready": "PASS",
+  "admin_static": "PASS",
+  "version": {
+    "app_version": "0.9.0-beta.1",
+    "api_version": "1",
+    "agent_policy_version": "policy-2",
+    "routing_policy_version": "router-1",
+    "build_git_sha": "327d37448835626df1909da114ffe2c339dbd2b6",
+    "build_timestamp": "2026-10-07T01:30:00Z",
+    "schema_version": "b86da35fba71"
+  }
+}

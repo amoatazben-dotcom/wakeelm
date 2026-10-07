@@ -1,6 +1,6 @@
 # Railway
 
-The repository includes `railway.toml`, `.python-version` (3.13), `requirements.txt`, and `scripts/start.sh`. Railpack installs the package; pre-deploy runs `alembic upgrade head`. Start command binds `$PORT` on `0.0.0.0`, with `/ready` as the deployment health check. Graceful shutdown cancels polling and closes Telegram/Redis/database connections.
+The repository includes `railway.toml`, `.python-version` (3.13), `requirements.txt`, and `scripts/start.sh`. The Dockerfile builds the Python runtime and static admin UI; pre-deploy runs `alembic upgrade head`. Start command binds `$PORT` on `0.0.0.0`, with `/ready` as the deployment health check. Graceful shutdown cancels polling and closes Telegram/Redis/database connections.
 
 1. Create a Railway project with a Python `bot-api` service and PostgreSQL/Redis services.
 2. Deploy this repository into `bot-api` and reference the database/Redis connection URLs.
@@ -34,7 +34,7 @@ Continue with one Python `bot-api` service, PostgreSQL, Redis and the private pe
 
 Add the optional integration variables from .env.example only when configuring those features. GITHUB_APP_* and GITHUB_CLIENT_* / GITHUB_WEBHOOK_SECRET are operator secrets; user PAT/MCP tokens are connected inside private Telegram and encrypted in SQL, never shared service env variables. INTEGRATIONS_CALLBACK_BASE_URL is the app's HTTPS domain and must match provider callback registrations. MCP_OAUTH_CLIENTS and MCP_TOOL_POLICIES are explicit JSON admin configuration. Leave write/CI review/comments false by default.
 
-Migration 45e2729dffcb adds GitHub connections/repos/links, MCP servers/credentials/tools/resources, OAuth states and AgentJob kind/encrypted payload. Pre-deploy already runs Alembic. Normal Railway does not provide a Docker daemon; keep SANDBOX_BACKEND=disabled until Stage 7 provisions a trusted external validator. With default GIT_REQUIRE_VALIDATION=true repository publication then remains blocked, as intended.
+Migration 45e2729dffcb adds GitHub connections/repos/links, MCP servers/credentials/tools/resources, OAuth states and AgentJob kind/encrypted payload. Pre-deploy already runs Alembic. Normal Railway does not provide a Docker daemon; keep SANDBOX_BACKEND=disabled until a reviewed production isolated validator is provisioned. With default GIT_REQUIRE_VALIDATION=true repository publication then remains blocked, as intended.
 
 No Railway project creation, variable mutation, service start or deployment was performed for Stages 5/6. The user postponed deployment until all construction stages finish.
 

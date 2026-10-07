@@ -1,6 +1,8 @@
-# Telegram AI Agent — Stages 1–6
+# Telegram AI Agent — Stage 9 Beta candidate
 
 Async Python backend with FastAPI, aiogram 3, PostgreSQL, Redis and a universal OpenAI-compatible gateway. Arabic is the default; English is persisted per user. Provider onboarding, discovery, model selection and chat are joined by secure project uploads/indexing/search/context and a bounded coding agent with patches, diffs, approvals, rollback and container validation. Stages 5/6 add owned GitHub repositories, isolated agent branches and separately approved commit/push/PR actions, plus reviewed MCP tools/resources/prompts and OAuth. Deployment tools remain unavailable.
+
+Candidate `0.9.0-beta.1`: stages 7/8 routing, specialist graphs, scoped memory, quotas, OIDC admin and operations are integrated. Final local verification:245 backend tests without skips, 3 client tests and 2 Chromium tests. Status **NOT_READY_FOR_BETA**: runtime OS HIGH findings, hosted CI billing lock and live Railway/configuration gates remain unresolved. No Beta tag or Railway deployment exists. See [final report](docs/STAGE_9_FINAL_REPORT.md), [checklist](docs/BETA_RELEASE_CHECKLIST.md), [required variables](docs/REQUIRED_VARIABLES.md) and [security audit](docs/FINAL_SECURITY_AUDIT.md).
 
 ## Local setup
 
@@ -25,7 +27,7 @@ sh scripts/start.sh
 
 Endpoints: `/health` (liveness), `/ready` (dependency readiness). Commands: `/start`, `/help`, `/settings`, `/providers`, `/models`, `/cancel`. Interact in a private chat only.
 
-Menus: new chat, API providers, models, settings and the latest 20 audit entries are functional. Files/projects and intelligent tasks are implemented; GitHub and tools/MCP are implemented; the usage billing dashboard remains deferred. Usage token counts are safely logged when supplied by the provider; there is no usage billing dashboard.
+Menus: new chat, API providers, models, settings and the latest 20 audit entries are functional. Files/projects and intelligent tasks are implemented; GitHub and tools/MCP are implemented; the admin dashboard exposes scoped usage and estimated costs with unknown-price labeling. Actual invoice/billing integration remains unavailable.
 
 ## Checks
 

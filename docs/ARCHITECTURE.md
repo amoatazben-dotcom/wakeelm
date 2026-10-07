@@ -1,47 +1,19 @@
-# Architecture
+# Final architecture
 
-`app/main.py` owns FastAPI lifespan, dependency connections, Telegram startup/shutdown and authenticated webhook delivery. `api/health.py` contains liveness/readiness. Bot handlers are split into start/settings, providers, models, chat and fallback modules. Redis FSM state expires after 30 minutes; secret FSM fields are encrypted before entering Redis. Redis event isolation serializes each user's flows across replicas.
+The authoritative runtime is one Python3.13 FastAPI process with Telegram handlers, durable SQL AgentWorker, model gateway, approval engine and admin BFF. PostgreSQL is the source of truth for user/provider/model/workspace/index/job/tool/approval/graph/memory/integration/usage/admin state. Redis coordinates ephemeral FSM/session/rate/circuit/update/worker/workspace leases; losing Redis never silently discards the SQL job queue. Migrations run outside app startup with a dedicated PostgreSQL advisory lock.
 
-`services/` owns registration, audits, provider discovery, credential encryption, ownership, model tests and selection. `db/repositories/owned.py` checks ownership for every provider/model lookup, including indirect model-to-provider ownership. Telegram reads audit entries scoped to the current user. `db/models/` defines seven persistent tables. `alembic/versions/` contains an explicit initial migration; migrations run outside normal application startup.
+Telegram inputs enter owned services. Provider HTTP uses public DNS pinning, bounded fixed-path calls and deadlines. RoutingGateway enforces tenant models, policy, provenance/context/budgets/quotas, bounded classified fallback and shared circuits. Manual selection remains authoritative. Model text cannot supply authorization or substitute approval.
 
-`providers/base.py` defines the gateway interface. `registry.py` selects explicit types or detects exact known hostnames. Generic/OpenRouter/NVIDIA adapters use a common safety transport. aiohttp is used for provider transport because its explicit DNS resolver permits connection pinning; httpx is used for FastAPI test requests. Public DNS resolution, connection pinning, disabled redirects, deadlines and bounded response sizes are in `providers/http.py`. Discovery makes GET requests only; model tests/completions are POST requests on fixed paths. No external tool or shell execution is available.
+Project flow is private storage → safe parser/scanner → encrypted chunks/symbols/manifest → bounded ContextEngine/search. Agent flow is persisted goal → plan/specialist DAG → role-limited ToolRegistry → owned reads/proposed exact hash-bound changes → user-bound approval → existing implementation executor → disposable validation → verification/snapshot/rollback receipt. Coordinator and other specialists cannot bypass mode, scope, hashes or approval. Interrupted local changes are recovered safely; ambiguous external writes remain pending and require reconciliation.
 
-PostgreSQL is the source of truth. Redis stores ephemeral FSM data, rate limits, operation locks, update deduplication and a future Redis Streams job foundation. `workers/base.py` defines a queue and handler contract; a worker runner, retries and a dead-letter queue belong to future stages. IDs only are allowed in job payloads.
+Encrypted memory is scoped by user/workspace/job/layer with provenance/confidence/expiry and bounded retrieval/compaction. Owned credentials are redacted before model context/memory. Knowledge/project/source/provider/MCP/issue content is lower-trust. Quota reservations and usage estimates are durable SQL and distinguish unknown pricing from actual billing.
 
-Each Telegram operation gets an async database session. A new provider and its encrypted credentials are committed before testing; health/discovery updates are then committed separately. Provider row locks protect mutations until commit; active selection uses an atomic upsert. Provider failures become safe return values so health history is still persisted. Active selection is stored in `user_settings` as provider/model IDs. Removal/disable clears active settings; missing remote models become unavailable.
+GitHub connections/repositories and MCP servers/tools/resources/OAuth are owned integration adapters. Trusted Git uses fixed argv/path/environment controls. MCP uses official SDK and explicit reviewed schemas/scopes/default-deny policy; arbitrary stdio is forbidden. External writes require reviewed policy and bound approvals; SQL receipts prevent unsafe replay. Runtime IntegrationHTTP has pinned public origins and shared circuits.
 
-Polling uses one replica/one uvicorn process and serial update handling. Webhook mode supports multiple replicas through Redis FSM isolation and delivery deduplication. Delivery is at-least-once: a crash between a completion and the final Redis acknowledgement can repeat a request. Exactly-once paid execution is not promised. Long provider operations run inline in Stage 2; moving them to durable workers is recommended for high volume.
+Admin is same-origin compiled React/TypeScript at `/admin-web/`, authenticated by the Python BFF using configured OIDC/MFA/PKCE/nonce and short encrypted secure sessions. Backend RBAC, CSRF/Origin, disabled identities, metadata filtering and audited writes are authoritative. Node24 is build/test only; no extra public Node service or browser secret store.
 
-Future conversations/messages/projects/jobs/tool calls/approvals/MCP tables are intentionally deferred. Add them through new migrations and services, keeping the existing gateway and ownership boundary.
+`/health`, `/ready`, `/version`, authenticated metrics, safe structured logs and W3C trace receipts expose bounded operational evidence. External exporters/alerts are unprovisioned. Retention runs under a shared lease. Offline transactional rotation and encrypted native PostgreSQL backup/separate restore are implemented; production remote schedule and workspace backup still require configuration.
 
-Translations live in `app/locales/ar.json` and `en.json`, with matching keys. Static UI strings use `tr()`. Provider/model IDs, capability identifiers and audit action identifiers remain technical values. Remote AI responses are displayed as plain text, split to Telegram limits.
+Deployment artifact is a multi-stage non-root UID10001 Docker image containing Git/PG17 clients and static admin assets. Only bot-api HTTPS is public; PG/Redis/private volume stay private. Begin with one app replica/uvicorn worker. Ordinary Railway does not expose a Docker daemon: validation fails closed until a reviewed isolated production runner is available. No Railway service is currently deployed. See OPERATIONS for actual service inventory, release metadata, configuration and recovery; FINAL_SECURITY_AUDIT for open blockers.
 
-
-## Stages 3/4
-
-Storage → parsers/scanner → encrypted chunks/symbols/manifest → exact/optional semantic search → bounded ContextEngine. Project detail routes connect to the durable AgentJob queue. AgentWorker → Planner → ToolRegistry/Policy → owned workspace reads/patches or Approval pause → isolated validator → persisted verification. Redis separates worker/workspace/edit leases from Telegram FSM locks. New tables are defined in models/projects.py and models/agent.py; Alembic migrations apply them independently. See AGENT_RUNTIME.md for recovery and cancellation. No AI tool accesses GitHub or deploys Railway.
-
-## Stages 5/6 boundaries
-
-Native GitHub and official Python MCP adapters share the existing worker, ToolRegistry, ToolPolicyEngine and ApprovalService. Eight new integration tables plus AgentJob kind/encrypted payload fields preserve ownership and secret isolation. Git metadata lives beside the owned working tree in private metadata; MCP secrets live in encrypted SQL fields.
-
-```mermaid
-flowchart TD
-    Telegram --> Jobs[Existing AgentJob queue]
-    OAuth[FastAPI OAuth/webhook] --> Jobs
-    Jobs --> Worker[Existing leased worker]
-    Worker --> Registry[ToolRegistry / ToolPolicyEngine]
-    Registry --> Approval[Existing exact approval store]
-    Registry --> Native[Native GitHub / ControlledGitService]
-    Registry --> Adapter[MCPToolAdapter / official Python SDK]
-    Native --> Working[Stage 3 workspaces / Stage 4 patches and validator]
-    Adapter --> HTTPS[Pinned HTTPS MCP endpoint]
-```
-
-No additional language/runtime service was justified. Native GitHub is the sole repository-write authority; MCP cannot expose a parallel GitHub write path.
-
-## Stage 7/8 control plane
-
-Telegram/API → scoped ModelRouter → durable quota reservation → bounded model gateway/circuit → existing approval-gated orchestrator. Specialist DAG and encrypted memory use PostgreSQL alongside jobs, approval/snapshot state, usage ledger, flags/plans and immutable admin audit. Redis carries expiring lease/circuit/rate/session/cache state only. TypeScript admin assets are built once and served by the same Python API; OIDC/MFA, RBAC, origin and CSRF checks run in Python.
-
-Deployable artifact: `Dockerfile` Python 3.13 non-root UID 10001 runtime + static React assets, trusted Git/PostgreSQL clients. Node 24 is only a build stage. Private PostgreSQL, Redis and persistent workspace volume are required. No Rust, Go, independent integration-node, external telemetry backend or object store has been deployed. Shared worker lease coordinates replicas; migration advisory lock protects the dedicated predeploy step. Production validator remains an isolated external/runtime prerequisite; never mount a host Docker socket into untrusted workloads.
+The local validation runner mounts only a disposable project copy, with no network/capabilities, readonly rootfs, nobody, no host secrets/socket, memory256MiB/pids64/cpu1 and bounded output/deadline/cancellation. Do not substitute host-shell execution. No Rust/Go component or separate integration helper is implemented: measured evidence does not justify duplicating control/approval authority.

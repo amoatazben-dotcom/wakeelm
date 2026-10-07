@@ -1,0 +1,48 @@
+{
+  "candidate_version": "0.9.0-beta.1",
+  "commit_sha": "327d37448835626df1909da114ffe2c339dbd2b6",
+  "evidence_scope": "Local final source candidate; later documentation-only commits may follow. Never reuse this attestation for a different deployed SHA.",
+  "gates": {
+    "A": {
+      "status": "BLOCKED",
+      "reason": "Local 245-test functional acceptance passes; live Telegram/provider/integration smoke not configured"
+    },
+    "B": {
+      "status": "FAIL",
+      "reason": "55 HIGH runtime package findings; no accepted exemptions"
+    },
+    "C": {
+      "status": "PASS",
+      "reason": "Local cross-tenant service/approval/admin isolation regression suite passed"
+    },
+    "D": {
+      "status": "PASS",
+      "reason": "Local encrypted separate PostgreSQL restore and application readiness passed; remote schedule remains unconfigured"
+    },
+    "E": {
+      "status": "BLOCKED",
+      "reason": "Hosted CI account locked by billing issue; local checks do not substitute"
+    },
+    "F": {
+      "status": "BLOCKED",
+      "reason": "No fresh Railway deployment performed; deployment deferred and runtime configuration absent"
+    },
+    "G": {
+      "status": "BLOCKED",
+      "reason": "Arabic dictionaries/RTL browser pass; live Telegram/device flow pending"
+    },
+    "H": {
+      "status": "BLOCKED",
+      "reason": "English dictionaries/LTR browser pass; live Telegram/device flow pending"
+    },
+    "I": {
+      "status": "BLOCKED",
+      "reason": "Controlled 100 requests/10 concurrent measured; broader load or explicit Beta limit acceptance pending"
+    },
+    "J": {
+      "status": "PASS",
+      "reason": "Required architecture/admin/operator/security/limitations/checklist/evidence documents present"
+    }
+  },
+  "recommendation": "NOT_READY_FOR_BETA"
+}

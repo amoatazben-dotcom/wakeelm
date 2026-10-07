@@ -1,0 +1,24 @@
+{
+  "source_commit": "327d37448835626df1909da114ffe2c339dbd2b6",
+  "backend": {
+    "passed": 245,
+    "skipped": 0,
+    "failed": 0,
+    "duration_seconds": 40.79,
+    "postgres": true,
+    "redis": true,
+    "real_docker_sandbox": true
+  },
+  "frontend": {
+    "typescript_build": "PASS",
+    "vitest_passed": 3,
+    "chromium_e2e_passed": 2
+  },
+  "schema_drift": "none",
+  "hosted_ci": {
+    "status": "BLOCKED",
+    "run_url": "https://github.com/amoatazben-dotcom/wakeelm/actions/runs/37556062529",
+    "reason": "The job was not started because your account is locked due to a billing issue."
+  },
+  "live_external_acceptance": "NOT_RUN"
+}
