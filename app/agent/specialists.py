@@ -41,12 +41,37 @@ ROLES = {
     "SecurityReviewAgent": READ | {"project.diff"},
     "DocumentationAgent": READ | {"workspace.propose_patch"},
     "ResearchAgent": READ,
-    "IntegrationAgent": READ,
+    "IntegrationAgent": READ
+    | {
+        "git.status",
+        "git.diff",
+        "git.list_branches",
+        "git.log",
+        "git.changed_files",
+        "git.create_branch",
+        "git.stage_paths",
+        "git.commit",
+        "git.push_branch",
+        "github.create_pull_request",
+        "github.create_issue_comment",
+        "github.create_pr_comment",
+        "github.get_issue",
+        "github.get_pull_request",
+        "github.list_pull_requests",
+        "github.compare_refs",
+        "github.checks",
+        "github.actions",
+        "github.statuses",
+        "mcp.read_resource",
+        "mcp.get_prompt",
+    },
 }
 
 
 def role_allows(role, request):
-    if request.tool_name not in ROLES.get(role, set()):
+    if request.tool_name not in ROLES.get(role, set()) and not (
+        role == "IntegrationAgent" and request.tool_name.startswith("mcp.")
+    ):
         raise SafeError("POLICY_DENIED")
     if role == "DocumentationAgent" and request.tool_name == "workspace.propose_patch":
         for edit in request.arguments.get("edits", []):
@@ -58,7 +83,7 @@ def role_allows(role, request):
 class CoordinatorAgent:
     def __init__(self, workspaces, models, job, registry, budget=None):
         self.w, self.models, self.job, self.registry = workspaces, models, job, registry
-        self.budget = budget or ExecutionBudget(max_model_calls=6, max_agent_steps=9)
+        self.budget = budget or ExecutionBudget(max_model_calls=12, max_agent_steps=9)
 
     async def record(self, role, evidence, dependencies=()):
         node = await self.w.session.scalar(
@@ -130,7 +155,18 @@ class CoordinatorAgent:
         await self.w.session.commit()
         self.budget.reserve(steps=1)
         request = self.w.secrets.decrypt(self.job.request_text)
-        model = await self.models.route(role + ": " + request)
+        role_policy = {
+            "CodeAnalysisAgent": "PREFER_LONG_CONTEXT",
+            "ReviewAgent": "PREFER_STRONGEST",
+            "SecurityReviewAgent": "PREFER_STRONGEST",
+            "ImplementationAgent": "PREFER_CODING",
+            "DocumentationAgent": "PREFER_CHEAP",
+        }.get(role, "AUTO")
+        model = (
+            await self.models.route(role + ": " + request, policy=role_policy)
+            if hasattr(self.models, "routing")
+            else await self.models.route(role + ": " + request)
+        )
         node.model_id = model.id
         data = {
             "role": role,

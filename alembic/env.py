@@ -1,6 +1,7 @@
 import asyncio
 import os
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from alembic import context
@@ -21,7 +22,18 @@ def run(connection):
 async def online():
     engine = create_async_engine(url)
     async with engine.connect() as connection:
-        await connection.run_sync(run)
+        if connection.dialect.name == "postgresql":
+            # Session lock serializes deploy migrations, including multiple predeploy replicas.
+            await connection.execute(text("SET lock_timeout = '30s'"))
+            await connection.execute(text("SELECT pg_advisory_lock(78124900)"))
+            await connection.commit()
+        try:
+            await connection.run_sync(run)
+        finally:
+            if connection.dialect.name == "postgresql":
+                await connection.rollback()
+                await connection.execute(text("SELECT pg_advisory_unlock(78124900)"))
+                await connection.commit()
     await engine.dispose()
 
 

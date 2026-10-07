@@ -230,6 +230,9 @@ async def test_commit_push_pr_require_separate_bound_approvals(stack, tmp_path, 
     await approve()
     result = await registry.execute(request)
     assert result["number"] == 8
+    writes_before = len([call for call in s.http.calls if call[0] == "POST"])
+    assert await registry.execute(request) == result
+    assert len([call for call in s.http.calls if call[0] == "POST"]) == writes_before
     write = [call for call in s.http.calls if call[0] == "POST"][-1]
     assert write[3]["head"] == "agent/test" and write[3]["base"] == "main" and write[3]["draft"]
 

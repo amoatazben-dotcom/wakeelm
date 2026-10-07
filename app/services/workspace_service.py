@@ -217,6 +217,23 @@ class WorkspaceService:
             "READY",
             now(),
         )
+        from app.platform.usage import QuotaEngine
+
+        await self.session.flush()
+        await QuotaEngine(self.session, self.user_id).resource("storage_bytes", 0)
+        from app.db.models.platform import UsageEntry
+
+        self.session.add(
+            UsageEntry(
+                idempotency_key="storage:" + uuid.uuid4().hex,
+                user_id=self.user_id,
+                operation="storage",
+                storage_bytes=total,
+                estimated_cost=0,
+                pricing_status="KNOWN",
+                status="COMPLETED",
+            )
+        )
         self.event(workspace, "PROJECT_INDEXED", count=len(paths))
         await self.session.flush()
         return manifest

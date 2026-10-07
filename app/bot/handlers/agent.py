@@ -248,6 +248,9 @@ async def callback(event, user, agents, state: FSMContext):
 
 async def task_message(event, user, agents, state: FSMContext):
     data = await state.get_data()
+    estimate = await agents.estimate_cost(event.text)
+    if estimate is not None and estimate > __import__("decimal").Decimal("0.25"):
+        await say(event, tr(user.language, "agent.cost_warning", cost=str(round(estimate, 4))))
     job = await agents.create(
         data["agent_workspace"], data["agent_mode"], event.text, event.chat.id
     )

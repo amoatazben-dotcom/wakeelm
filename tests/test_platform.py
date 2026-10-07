@@ -169,7 +169,7 @@ async def test_real_admin_api_roles_csrf_metadata_and_audited_writes(stack, monk
         pass
 
     monkeypatch.setattr("app.platform.admin_auth.verify_identity", identity)
-    monkeypatch.setattr(app.state.limits, "cooldown", no_cooldown)
+    monkeypatch.setattr(app.state.limits, "window", no_cooldown)
     stack.session.add_all(
         [
             AdminIdentity(subject="reader", role="READ_ONLY", enabled=True),
@@ -220,3 +220,35 @@ async def test_real_admin_api_roles_csrf_metadata_and_audited_writes(stack, monk
                 headers={"X-CSRF-Token": "required-csrf", "Origin": "https://agent.example"},
             )
         ).status_code == 200
+
+
+async def test_retention_deletion_clears_tokens_files_and_memory_preserves_audit(stack, tmp_path):
+    from test_services import create
+    from test_workspaces import service
+
+    from app.core.limits import Limits
+    from app.db.models import AuditLog, Provider
+    from app.db.models.platform import MemoryItem
+    from app.memory.service import MemoryCandidate, MemoryService
+    from app.platform.retention import RetentionService
+
+    w = service(stack, tmp_path)
+    workspace = await w.ingest("main.py", b"print('hello')")
+    await create(stack)
+    await MemoryService(stack.session, stack.user.id, stack.secrets).write(
+        MemoryCandidate(
+            layer="PROJECT",
+            content="pytest conventions",
+            workspace_id=workspace.id,
+            source_type="USER",
+            source_id="test",
+        )
+    )
+    await stack.session.commit()
+    retention = RetentionService(stack.session, w.settings, stack.secrets, Limits(stack.redis))
+    await retention.delete_user_data(stack.user.id)
+    assert not stack.user.is_active and stack.user.telegram_username is None
+    assert await stack.session.scalar(select(func.count()).select_from(Provider)) == 0
+    assert await stack.session.scalar(select(func.count()).select_from(MemoryItem)) == 0
+    assert not w.storage.root_for(stack.user.id, workspace.id).exists()
+    assert await stack.session.scalar(select(func.count()).select_from(AuditLog)) >= 1

@@ -12,7 +12,7 @@ class OwnedRepository:
         query = select(Provider).where(Provider.id == provider_id, Provider.user_id == self.user_id)
         if for_update:
             query = query.with_for_update()
-        value = await self.session.scalar(query)
+        value = await self.session.scalar(query.execution_options(populate_existing=True))
         if value is None:
             raise SafeError("NOT_FOUND")
         return value

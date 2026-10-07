@@ -130,6 +130,11 @@ class GitHubConnections:
                 select(GitHubRepository).where(GitHubRepository.github_connection_id == ident)
             )
         }
+        from app.platform.usage import QuotaEngine
+
+        await QuotaEngine(self.session, self.user_id).resource(
+            "github_repositories", sum(data.id not in known for data in rows)
+        )
         for data in rows:
             repo = known.get(data.id)
             if repo is None:

@@ -387,5 +387,8 @@
   "error.KILL_SWITCH_ACTIVE": "The operator has paused this operation.",
   "error.QUOTA_EXCEEDED": "Usage limit reached; check usage settings.",
   "error.PROVIDER_OFFLINE": "Provider is currently unavailable.",
-  "audit.MODEL_ROUTED": "Model routed"
+  "audit.MODEL_ROUTED": "Model routed",
+  "routing.probe": "🔬 Bounded capability probe (may cost credit)",
+  "error.WRITE_OUTCOME_UNKNOWN": "External write outcome is unknown; reconcile before retrying.",
+  "agent.cost_warning": "💰 Conservative estimate for all possible model calls: ${cost}. Execution stops at the job budget or your quota."
 }

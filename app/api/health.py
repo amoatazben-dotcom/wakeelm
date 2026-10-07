@@ -26,7 +26,9 @@ async def ready(request: Request):
         async with asyncio.timeout(3):
             checks["redis"] = bool(await request.app.state.redis.ping())
     except Exception:
-        pass
+        from app.platform.telemetry import metric
+
+        metric("redis_errors")
     task = getattr(request.app.state, "polling_task", None)
     if task is not None:
         checks["bot"] = not task.done()
@@ -37,3 +39,20 @@ async def ready(request: Request):
         {"status": "ready" if all(checks.values()) else "not_ready", "checks": checks},
         status_code=200 if all(checks.values()) else 503,
     )
+
+
+@router.get("/version")
+async def version(request: Request):
+    from app.platform.version import metadata
+
+    result = metadata(request.app.state.settings)
+    result["schema_version"] = "unavailable"
+    try:
+        async with asyncio.timeout(3):
+            async with request.app.state.engine.connect() as connection:
+                result["schema_version"] = await connection.scalar(
+                    text("SELECT version_num FROM alembic_version")
+                )
+    except Exception:
+        pass
+    return result

@@ -73,7 +73,11 @@ class ServicesMiddleware(BaseMiddleware):
                 return result
         except SafeError as error:
             await message.answer(tr(lang, "error." + error.code))
-        except Exception:
+        except Exception as exc:
+            from app.platform.telemetry import ErrorTracker
+            from app.platform.version import APP_VERSION
+
+            ErrorTracker().capture(exc, APP_VERSION)
             # Deliberately do not attach raw exception text: provider/Telegram errors may contain secrets.
             structlog.get_logger().error(
                 "bot_operation_failed",

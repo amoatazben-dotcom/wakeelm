@@ -67,8 +67,8 @@ async def verify_identity(token, settings, nonce=None, http=None):
 
 async def admin(request: Request, permission="read"):
     state = request.app.state
-    await state.limits.cooldown(
-        "admin:" + (request.client.host if request.client else "unknown"), 0.1
+    await state.limits.window(
+        "admin:" + (request.client.host if request.client else "unknown"), 120
     )
     bearer = request.headers.get("Authorization", "")
     if bearer.startswith("Bearer "):

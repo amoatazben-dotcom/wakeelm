@@ -138,6 +138,7 @@ class OpenAICompatibleAdapter(AIProviderAdapter):
                 if isinstance(usage, dict)
                 else {}
             )
+            safe["_native_tool_calls"] = len(calls) if calls else 0
             return content, safe
         except (KeyError, IndexError, TypeError, ValueError):
             raise SafeError("INVALID_RESPONSE") from None

@@ -35,6 +35,9 @@ class RepositoryService:
         self.git_factory = git_factory
 
     async def import_repository(self, ident):
+        from app.platform.usage import QuotaEngine
+
+        await QuotaEngine(self.w.session, self.w.user_id).resource("repositories")
         repo = await self.owned.repository(ident)
         repo, connection, service = await self.connections.verify_repository(repo)
         ident = str(uuid.uuid4())
@@ -257,9 +260,37 @@ class RepositoryService:
             or link.metadata_json.get("committed_sha") != sha
         ):
             raise SafeError("PUSH_REQUIRED")
+        import hashlib
+        import json
+
+        key = hashlib.sha256(
+            json.dumps(
+                {
+                    "head": link.working_branch,
+                    "base": repo.default_branch,
+                    "sha": sha,
+                    "data": data,
+                },
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
+        intents = dict(link.metadata_json.get("pr_intents", {}))
+        if key in intents:
+            if intents[key].get("status") == "COMPLETED":
+                return intents[key]["result"]
+            raise SafeError("WRITE_OUTCOME_UNKNOWN")
+        intents[key] = {"status": "PENDING"}
+        link.metadata_json = {**link.metadata_json, "pr_intents": intents}
+        await self.w.session.commit()
         result = await service.create_pull_request(
             repo.full_name, link.working_branch, repo.default_branch, data
         )
+        intents[key] = {
+            "status": "COMPLETED",
+            "result": {"number": result["number"], "url": result["html_url"]},
+        }
+        link.metadata_json = {**link.metadata_json, "pr_intents": intents}
+        await self.w.session.commit()
         audit(self.w.session, self.w.user_id, "PULL_REQUEST_CREATED", "workspace", job.workspace_id)
         return {"number": result["number"], "url": result["html_url"]}
 

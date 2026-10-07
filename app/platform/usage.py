@@ -1,7 +1,7 @@
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, select
 
 from app.core.exceptions import SafeError
 from app.db.base import now
@@ -71,7 +71,10 @@ class QuotaEngine:
 
     async def lock(self):
         user = await self.session.scalar(
-            select(User).where(User.id == self.user_id).with_for_update()
+            select(User)
+            .where(User.id == self.user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         if not user or not user.is_active:
             raise SafeError("INACTIVE")
@@ -95,14 +98,8 @@ class QuotaEngine:
         limits = await self.limits()
         day = now().replace(hour=0, minute=0, second=0, microsecond=0)
         month = day.replace(day=1)
-        query = select(UsageEntry).where(
-            UsageEntry.user_id == self.user_id,
-            UsageEntry.status != "REJECTED",
-            UsageEntry.created_at >= month,
-        )
-        rows = list(await self.session.scalars(query))
-        today = [r for r in rows if r.created_at.replace(tzinfo=day.tzinfo) >= day]
-        tokens = sum(r.input_tokens + r.output_tokens for r in today)
+        today, monthly = await self.totals(day), await self.totals(month)
+        tokens = today["tokens"]
         if operation == "model" and self.settings:
             global_total = await self.session.scalar(
                 select(func.coalesce(func.sum(UsageEntry.estimated_cost), 0)).where(
@@ -118,22 +115,21 @@ class QuotaEngine:
             )
             expected = Decimal(str(cost)) if cost is not None else Decimal("0.10")
             if global_total + expected > Decimal(
-                str(self.settings.global_daily_cost_cap)
-            ) or provider_total + expected > Decimal(str(self.settings.provider_daily_cost_cap)):
+                str(getattr(self.settings, "global_daily_cost_cap", 100))
+            ) or provider_total + expected > Decimal(
+                str(getattr(self.settings, "provider_daily_cost_cap", 50))
+            ):
                 raise SafeError("QUOTA_EXCEEDED")
         reserved_cost = Decimal(str(cost)) if cost is not None else Decimal("0.10")
         if operation == "model" and (
             tokens + input_tokens + output_tokens > limits["tokens_day"]
-            or sum(r.estimated_cost or 0 for r in rows) + reserved_cost
+            or Decimal(monthly["estimated_cost"]) + reserved_cost
             > Decimal(str(limits["monthly_spend"]))
-            or sum(r.estimated_cost or 0 for r in today) + reserved_cost
+            or Decimal(today["estimated_cost"]) + reserved_cost
             > Decimal(str(limits["daily_spend"]))
         ):
             raise SafeError("QUOTA_EXCEEDED")
-        if (
-            operation == "message"
-            and sum(r.operation == "message" for r in today) >= limits["messages_day"]
-        ):
+        if operation == "message" and today["messages"] >= limits["messages_day"]:
             raise SafeError("QUOTA_EXCEEDED")
         if operation == "job":
             active = await self.session.scalar(
@@ -153,10 +149,7 @@ class QuotaEngine:
                     ),
                 )
             )
-            if (
-                active >= limits["concurrent_jobs"]
-                or sum(r.operation == "job" for r in today) >= limits["jobs_day"]
-            ):
+            if active >= limits["concurrent_jobs"] or today["jobs"] >= limits["jobs_day"]:
                 raise SafeError("QUOTA_EXCEEDED")
         # SQL reservations survive crashes and are counted conservatively until reconciliation.
         row = UsageEntry(
@@ -168,6 +161,7 @@ class QuotaEngine:
             operation=operation,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            pricing_status="KNOWN" if cost is not None else "UNKNOWN",
             estimated_cost=reserved_cost if operation == "model" else Decimal(0),
             status="RESERVED",
         )
@@ -214,29 +208,52 @@ class QuotaEngine:
         if (used or 0) + additional > limits[kind]:
             raise SafeError("QUOTA_EXCEEDED")
 
-    async def summary(self):
-        day = now().replace(hour=0, minute=0, second=0, microsecond=0)
-        rows = list(
-            await self.session.scalars(
-                select(UsageEntry).where(
-                    UsageEntry.user_id == self.user_id, UsageEntry.created_at >= day.replace(day=1)
+    async def totals(self, since):
+        values = (
+            await self.session.execute(
+                select(
+                    func.coalesce(func.sum(case((UsageEntry.operation == "model", 1), else_=0)), 0),
+                    func.coalesce(func.sum(UsageEntry.input_tokens + UsageEntry.output_tokens), 0),
+                    func.coalesce(func.sum(case((UsageEntry.operation == "job", 1), else_=0)), 0),
+                    func.coalesce(
+                        func.sum(case((UsageEntry.operation == "message", 1), else_=0)), 0
+                    ),
+                    func.coalesce(func.sum(UsageEntry.estimated_cost), 0),
+                    func.coalesce(
+                        func.sum(
+                            case(
+                                (
+                                    and_(
+                                        UsageEntry.pricing_status == "UNKNOWN",
+                                        UsageEntry.operation == "model",
+                                    ),
+                                    1,
+                                ),
+                                else_=0,
+                            )
+                        ),
+                        0,
+                    ),
+                ).where(
+                    UsageEntry.user_id == self.user_id,
+                    UsageEntry.created_at >= since,
+                    UsageEntry.status != "REJECTED",
                 )
             )
-        )
-
-        def totals(values):
-            return {
-                "requests": sum(r.operation == "model" for r in values),
-                "tokens": sum(r.input_tokens + r.output_tokens for r in values),
-                "jobs": sum(r.operation == "job" for r in values),
-                "estimated_cost": str(sum(r.estimated_cost or 0 for r in values)),
-                "unknown_price_requests": sum(
-                    r.actual_cost is None and r.operation == "model" for r in values
-                ),
-            }
-
+        ).one()
         return {
-            "today": totals([r for r in rows if r.created_at.replace(tzinfo=day.tzinfo) >= day]),
-            "month": totals(rows),
+            "requests": values[0],
+            "tokens": values[1],
+            "jobs": values[2],
+            "messages": values[3],
+            "estimated_cost": str(values[4]),
+            "unknown_price_requests": values[5],
+        }
+
+    async def summary(self):
+        day = now().replace(hour=0, minute=0, second=0, microsecond=0)
+        return {
+            "today": await self.totals(day),
+            "month": await self.totals(day.replace(day=1)),
             "limits": await self.limits(),
         }

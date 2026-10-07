@@ -3,6 +3,9 @@ import logging
 import structlog
 
 ALLOWED = {
+    "frames",
+    "version",
+    "user_id",
     "service",
     "environment",
     "trace_id",

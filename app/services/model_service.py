@@ -73,7 +73,14 @@ class ModelService:
 
     async def completion(self, model, text, test=False, max_tokens=256):
         if test:
-            return await self._completion(model, text, test=True, max_tokens=max_tokens)
+            return await self.routing.execute(
+                model,
+                lambda chosen: self._completion(chosen, text, test=True),
+                input_tokens=10,
+                output_tokens=4,
+                allow_fallback=False,
+                record_health=False,
+            )
         from app.indexing.chunker import token_estimate
 
         return await self.routing.execute(
@@ -83,10 +90,16 @@ class ModelService:
             max_tokens,
         )
 
-    async def route(self, text, required=None, context_size=0):
-        return await self.routing.select(text, required, context_size)
+    async def route(self, text, required=None, context_size=0, policy=None):
+        return await self.routing.select(text, required, context_size, policy)
 
     async def _completion(self, model, text, test=False, max_tokens=256):
+        from app.platform.redaction import user_sanitizer
+
+        sanitizer = await user_sanitizer(
+            self.session, self.user_id, self.providers.secrets, self.settings
+        )
+        text = sanitizer.clean(text)
         provider = await self.owned.provider(model.provider_id)
         if provider.status == "DISABLED":
             raise SafeError("DISABLED")
@@ -114,6 +127,14 @@ class ModelService:
         )
 
     async def _agent_completion(self, model, messages, tools=None):
+        import json
+
+        from app.platform.redaction import user_sanitizer
+
+        sanitizer = await user_sanitizer(
+            self.session, self.user_id, self.providers.secrets, self.settings
+        )
+        messages = json.loads(sanitizer.clean(messages))
         provider = await self.owned.provider(model.provider_id)
         if provider.status == "DISABLED":
             raise SafeError("DISABLED")

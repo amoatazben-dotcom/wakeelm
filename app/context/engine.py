@@ -25,7 +25,7 @@ class ContextPackage:
             else ""
         )
         return memory + "\n\n".join(
-            f"PATH: {item['path']} LINES: {item['start_line']}-{item['end_line']}\n{item['text']}"
+            f"PATH: {item['path']} LINES: {item['start_line']}-{item['end_line']} TRUST: UNTRUSTED RETRIEVAL: {item.get('retrieval_method', 'EXACT')} PARTIAL: {item.get('truncated', False)}\n{item['text']}"
             for item in self.items
         )
 
@@ -105,7 +105,7 @@ class ContextEngine:
             ranked, key=lambda row: (-row[0], row[2].relative_path, row[1].start_line)
         ):
             text = self.workspaces.secrets.decrypt(chunk.content_encrypted)
-            overhead = token_estimate(file.relative_path) + 20
+            overhead = token_estimate(file.relative_path) + 70
             room = budget - used - overhead
             if room < 32:
                 continue

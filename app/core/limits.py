@@ -12,6 +12,12 @@ class Limits:
         if not await self.redis.set("limit:" + key, "1", nx=True, px=max(1, int(seconds * 1000))):
             raise SafeError("RATE_LIMITED")
 
+    async def window(self, key, maximum, seconds=60):
+        script = "local n=redis.call('incr',KEYS[1]); if n==1 then redis.call('expire',KEYS[1],ARGV[1]) end; return n"
+        count = await self.redis.eval(script, 1, "rate:" + key, seconds)
+        if count > maximum:
+            raise SafeError("RATE_LIMITED")
+
     @asynccontextmanager
     async def lock(self, key, seconds=60):
         token = uuid.uuid4().hex

@@ -43,6 +43,9 @@ def create_app(settings=None, start_bot=True):
         )
         app.state.limits = Limits(redis)
         app.state.bot = bot
+        from app.storage.local import LocalWorkspaceStorage
+
+        LocalWorkspaceStorage(settings)
         dispatcher = create_dispatcher(
             redis,
             sessions,
@@ -178,6 +181,21 @@ def create_app(settings=None, start_bot=True):
         with trace_context(request.headers.get("traceparent"), request_id=request_id) as trace:
             structlog.contextvars.bind_contextvars(service="bot-api", environment=settings.app_env)
             try:
+                if request.url.path.startswith(("/integrations/", "/webhooks/")):
+                    from app.core.exceptions import SafeError
+
+                    category = (
+                        "callback"
+                        if request.url.path.startswith("/integrations/")
+                        else "github-webhook"
+                    )
+                    try:
+                        await request.app.state.limits.window(
+                            category + ":" + request.client.host,
+                            30 if category == "callback" else 120,
+                        )
+                    except SafeError:
+                        return JSONResponse({"error": "RATE_LIMITED"}, status_code=429)
                 response = await call_next(request)
                 response.headers["X-Request-ID"] = request_id
                 response.headers["traceparent"] = f"00-{trace['trace_id']}-{trace['span_id']}-01"

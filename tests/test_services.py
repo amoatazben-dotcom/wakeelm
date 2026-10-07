@@ -222,3 +222,17 @@ async def test_active_selection_cannot_cross_owners(stack):
             ProviderInput(name="attack", base_url="https://example.com/v1", api_token="secret"),
         )
     assert await stack.session.get(Provider, provider.id) is not None
+
+
+async def test_model_context_never_contains_owned_opaque_credentials(stack):
+    provider = await create(stack)
+    await stack.service.discover(provider.id)
+    rows, _ = await ModelService(stack.service).page()
+    await ModelService(stack.service).completion(
+        rows[0], "Inspect private-token-example and private-header-example"
+    )
+    payload = stack.http.calls[-1][3]
+    assert "private-token-example" not in str(payload)
+    assert "private-header" not in str(payload)
+    assert "[REDACTED]" in str(payload)
+    assert "private-token-example" in stack.http.calls[-1][2]["authorization"]

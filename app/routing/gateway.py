@@ -41,7 +41,15 @@ class RoutingGateway:
 
     async def select(self, text, required=None, context_size=0, policy=None):
         prefs = await RoutingPreferences(self.models.session, self.models.user_id).get()
-        selected = RoutingPolicy(policy or prefs["policy"])
+        from app.platform.flags import FeatureFlags
+
+        if prefs["policy"] != "MANUAL_ONLY":
+            await FeatureFlags(self.models.session, self.models.user_id).require(
+                "experimental_router"
+            )
+        selected = RoutingPolicy(
+            prefs["policy"] if prefs["policy"] == "MANUAL_ONLY" else (policy or prefs["policy"])
+        )
         manual = await self.models.active() if selected == RoutingPolicy.MANUAL_ONLY else None
         classification = TaskClassifier().classify(text, context_size)
         request = RoutingRequest(
@@ -66,14 +74,32 @@ class RoutingGateway:
             "model",
             self.last_decision.model_id,
             status=selected.value,
+            routing_policy_version=self.last_decision.routing_policy_version,
+            reason=self.last_decision.reason,
+            confidence=self.last_decision.confidence,
+            fallback_chain=self.last_decision.fallback_chain,
+            required_capabilities=self.last_decision.required_capabilities,
+            task_type=classification.task_type.value,
+            classifier_version=classification.classifier_version,
         )
         return await self.models.owned.model(self.last_decision.model_id)
 
-    async def execute(self, model, invoke, input_tokens=0, output_tokens=1800, budget=None):
+    async def execute(
+        self,
+        model,
+        invoke,
+        input_tokens=0,
+        output_tokens=1800,
+        budget=None,
+        allow_fallback=True,
+        record_health=True,
+    ):
         budget = budget or getattr(self.models, "budget", None) or ExecutionBudget()
         decision = self.last_decision
         chain = [model.id] + (
-            decision.fallback_chain if decision and decision.model_id == model.id else []
+            decision.fallback_chain
+            if allow_fallback and decision and decision.model_id == model.id
+            else []
         )
         excluded = set()
         last_error = None
@@ -121,22 +147,23 @@ class RoutingGateway:
                 incoming = max(0, int(usage.get("prompt_tokens", 0) or 0))
                 outgoing = max(0, int(usage.get("completion_tokens", 0) or 0))
                 ledger.input_tokens, ledger.output_tokens = incoming, outgoing
-                ledger.actual_cost = CostEstimator.estimate(
+                final_estimate = CostEstimator.estimate(
                     candidate.pricing_json or {}, incoming, outgoing
                 )
-                if ledger.actual_cost is not None:
-                    ledger.estimated_cost = ledger.actual_cost
+                if final_estimate is not None:
+                    ledger.estimated_cost = final_estimate
+                ledger.pricing_status = "KNOWN" if final_estimate is not None else "UNKNOWN"
                 ledger.status = "COMPLETED"
                 metric("model_tokens", incoming + outgoing)
-                if ledger.actual_cost is not None:
-                    metric("model_cost", float(ledger.actual_cost))
+                if final_estimate is not None:
+                    metric("model_cost", float(final_estimate))
                 if job:
                     job.input_tokens += incoming
                     job.output_tokens += outgoing
                 budget.account(
                     incoming + outgoing,
-                    CostEstimator.estimate(candidate.pricing_json or {}, incoming, outgoing)
-                    if ledger.actual_cost is not None
+                    final_estimate
+                    if final_estimate is not None
                     else __import__("decimal").Decimal("0.10"),
                 )
                 return result
@@ -156,14 +183,15 @@ class RoutingGateway:
             finally:
                 metric("provider_latency", time.monotonic() - started, observe=True)
                 ledger.duration_ms = int((time.monotonic() - started) * 1000)
-                self.models.session.add(
-                    ModelHealthCheck(
-                        model_id=candidate.id,
-                        status="FAILED" if error else "AVAILABLE",
-                        error_code=error.code if error else None,
-                        latency_ms=int((time.monotonic() - started) * 1000),
-                        checked_at=now(),
+                if record_health:
+                    self.models.session.add(
+                        ModelHealthCheck(
+                            model_id=candidate.id,
+                            status="FAILED" if error else "AVAILABLE",
+                            error_code=error.code if error else None,
+                            latency_ms=int((time.monotonic() - started) * 1000),
+                            checked_at=now(),
+                        )
                     )
-                )
                 await self.models.session.commit()
         raise last_error or SafeError("NO_ACTIVE_MODEL")

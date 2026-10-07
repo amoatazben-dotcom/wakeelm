@@ -9,7 +9,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
     app_name: str = "Telegram AI Agent"
     app_env: str = "development"
-    app_host: str = "0.0.0.0"
+    # Container listener; deployment ingress controls public exposure.
+    app_host: str = "0.0.0.0"  # nosec B104
     app_port: int = 8000
     telegram_bot_token: SecretStr
     database_url: SecretStr
@@ -95,7 +96,10 @@ class Settings(BaseSettings):
     artifact_retention_days: int = Field(default=30, ge=1)
     memory_retention_days: int = Field(default=90, ge=1)
     workspace_retention_days: int = Field(default=30, ge=1)
-    build_git_sha: str = "unknown"
+    build_git_sha: str = Field(
+        default="unknown",
+        validation_alias=AliasChoices("build_git_sha", "BUILD_GIT_SHA", "RAILWAY_GIT_COMMIT_SHA"),
+    )
     build_timestamp: str = "unknown"
 
     @field_validator("master_encryption_previous_keys")

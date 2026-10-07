@@ -83,6 +83,7 @@ async def model_detail(event, user, models, ident):
     rows = [
         [("model.activate", f"model:activate:{ident}")],
         [("model.test", f"model:test:{ident}"), ("model.details", f"model:details:{ident}")],
+        [("routing.probe", f"model:probe:{ident}")],
         [("common.back", f"models:all:0:{provider.id}")],
     ]
     await say(event, text, keyboard(user.language, rows))
@@ -114,6 +115,20 @@ async def model_actions(event, user, models, state: FSMContext):
         if error:
             await say(event, tr(user.language, "error." + error.code))
         await model_detail(event, user, models, ident)
+    elif action == "probe":
+        await state.update_data(probe_model=ident)
+        await say(
+            event,
+            tr(user.language, "model.test.warning"),
+            keyboard(
+                user.language,
+                [
+                    [("capability." + cap, f"probe:{cap}:{ident}")]
+                    for cap in ["chat", "coding", "tool_calling", "structured_output"]
+                ]
+                + [[("common.cancel", "cancel")]],
+            ),
+        )
     elif action == "details":
         # Only normalized safe metadata, no remote error text or credentials.
         text = "\n".join(
@@ -137,8 +152,21 @@ async def model_actions(event, user, models, state: FSMContext):
         await model_detail(event, user, models, ident)
 
 
+async def probe(event, user, models, state: FSMContext):
+    _, cap, ident = event.data.split(":")
+    data = await state.get_data()
+    if data.get("probe_model") != int(ident):
+        raise SafeError("INVALID_INPUT")
+    await state.update_data(probe_model=None)
+    from app.routing.probes import ModelCapabilityProbe
+
+    result = await ModelCapabilityProbe(models).run(int(ident), cap)
+    await say(event, status(user, result["state"]), back(user.language))
+
+
 def build_router():
     router = Router()
+    router.callback_query.register(probe, F.data.startswith("probe:"))
     router.callback_query.register(model_list, F.data.startswith("models:"))
     router.callback_query.register(model_actions, F.data.startswith("model:"))
     return router

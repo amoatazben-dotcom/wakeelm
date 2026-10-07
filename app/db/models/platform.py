@@ -69,6 +69,9 @@ class UsageEntry(Base):
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, default=0)
     estimated_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 8))
+    pricing_status: Mapped[str] = mapped_column(
+        String(20), default="UNKNOWN", server_default="UNKNOWN"
+    )
     actual_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 8))
     tool_calls: Mapped[int] = mapped_column(Integer, default=0)
     storage_bytes: Mapped[int] = mapped_column(Integer, default=0)

@@ -48,6 +48,9 @@ def metric(name, amount=1, observe=False):
 
 
 def render_metrics():
+    for name in METRICS:
+        if name not in HISTOGRAMS:
+            COUNTERS.setdefault(name, 0)
     lines = [f"wakeelm_{name} {value}" for name, value in sorted(COUNTERS.items())]
     for name, (count, total, buckets) in sorted(HISTOGRAMS.items()):
         for bound, count_bucket in zip(BUCKETS, buckets):
@@ -103,4 +106,15 @@ class ErrorTracker:
         }
         if self.sink:
             self.sink(event)
+        else:
+            import structlog
+
+            structlog.get_logger().error(
+                "error_captured",
+                error_code=event["type"],
+                frames=frames,
+                version=version,
+                service=service,
+                trace_id=event["trace_id"],
+            )
         return event

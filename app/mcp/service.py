@@ -30,6 +30,9 @@ class MCPService:
         self.policy = MCPRiskPolicy(settings)
 
     async def add(self, name, url, transport="streamable_http", token=None):
+        from app.platform.usage import QuotaEngine
+
+        await QuotaEngine(self.session, self.user_id).resource("mcp_connections")
         if transport != "streamable_http" or transport not in self.settings.mcp_allowed_transports:
             raise SafeError("TRANSPORT_DENIED")
         if not name.strip() or len(name) > 100:

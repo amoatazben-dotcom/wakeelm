@@ -25,6 +25,10 @@ def number(value, default=0.0):
 
 def capability(model, name):
     value = (model.capabilities_json or {}).get(name, {})
+    from app.db.base import now
+
+    if value.get("probe_expires_at") and value["probe_expires_at"] <= now().isoformat():
+        return False
     return value.get("state") == "SUPPORTED" and EVIDENCE.get(value.get("source")) in {
         "VERIFIED",
         "PROVIDER_REPORTED",

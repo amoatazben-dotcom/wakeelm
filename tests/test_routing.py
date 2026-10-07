@@ -123,3 +123,19 @@ def test_classifier_and_budget():
         ExecutionBudget(max_estimated_cost=Decimal("0.01")).reserve(cost=Decimal("1"))
     with pytest.raises(SafeError):
         ExecutionBudget(max_total_tokens=10).account(11)
+
+
+async def test_optional_probe_is_owned_bounded_cached_and_does_not_infer_from_name(stack):
+    from app.routing.probes import ModelCapabilityProbe
+
+    rows = await candidates(stack)
+    probe = ModelCapabilityProbe(ModelService(stack.service))
+    before = len(stack.http.calls)
+    result = await probe.run(rows[0].id, "chat")
+    assert result["state"] == "SUPPORTED" and result["source"] == "TESTED"
+    after = len(stack.http.calls)
+    assert after == before + 1
+    assert await probe.run(rows[0].id, "chat") == result
+    assert len(stack.http.calls) == after
+    with pytest.raises(SafeError, match="INVALID_INPUT"):
+        await probe.run(rows[0].id, "vision")

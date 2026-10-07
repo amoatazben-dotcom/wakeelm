@@ -20,6 +20,24 @@ class AgentService:
             workspaces.session, workspaces.user_id, workspaces.settings
         )
 
+    async def estimate_cost(self, request):
+        if not hasattr(self.models, "route"):
+            return None
+        from app.indexing.chunker import token_estimate
+        from app.routing.budget import CostEstimator
+
+        model = await self.models.route(request)
+        per_call = CostEstimator.estimate(
+            model.pricing_json or {},
+            token_estimate(request) + self.w.settings.context_max_tokens,
+            1800,
+        )
+        return (
+            per_call * getattr(self.w.settings, "max_job_model_calls", 12)
+            if per_call is not None
+            else None
+        )
+
     async def create(self, workspace_id, mode, request, chat_id=None):
         from app.platform.flags import FeatureFlags
         from app.platform.usage import QuotaEngine
@@ -56,9 +74,31 @@ class AgentService:
             max_steps=self.w.settings.max_agent_steps,
             status="QUEUED",
             telegram_chat_id=chat_id,
+            result_json={
+                "trace_id": __import__("app.platform.telemetry", fromlist=["TRACE"])
+                .TRACE.get()
+                .get("trace_id")
+            },
         )
         self.w.session.add(job)
         await self.w.session.flush()
+        from app.memory.service import MemoryCandidate, MemoryService
+
+        try:
+            await MemoryService(self.w.session, self.w.user_id, self.w.secrets).write(
+                MemoryCandidate(
+                    layer="TASK",
+                    content=request,
+                    workspace_id=workspace_id,
+                    job_id=job.id,
+                    source_type="USER",
+                    source_id=job.id,
+                    confidence=1,
+                )
+            )
+        except SafeError as error:
+            if error.code != "MEMORY_SECRET_DENIED":
+                raise
         audit(
             self.w.session,
             self.w.user_id,

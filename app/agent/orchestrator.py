@@ -146,6 +146,23 @@ class AgentOrchestrator:
                         if job.current_step >= job.max_steps:
                             raise SafeError("AGENT_LIMIT")
                         request = plan.steps[job.current_step]
+                        role = "ImplementationAgent"
+                        if prefs["agent_mode"] == "MULTI_AGENT":
+                            from app.agent.specialists import role_allows
+
+                            effective = request
+                            if request.tool_name == "agent.request_approval":
+                                from app.agent.schemas import ToolRequest
+
+                                effective = ToolRequest(
+                                    tool_name=request.arguments.get("tool_name", ""),
+                                    arguments=request.arguments.get("arguments", {}),
+                                )
+                            if effective.tool_name.startswith("validation."):
+                                role = "TestAgent"
+                            elif effective.tool_name.startswith(("git.", "github.", "mcp.")):
+                                role = "IntegrationAgent"
+                            role_allows(role, effective)
                         step = await self.w.session.scalar(
                             select(AgentStep).where(
                                 AgentStep.job_id == job.id,
@@ -160,6 +177,7 @@ class AgentOrchestrator:
                                 tool_name=request.tool_name,
                                 input_json_redacted=redact(request.arguments),
                                 status="RUNNING",
+                                metadata_json={"agent_role": role},
                             )
                             self.w.session.add(step)
                         try:
@@ -174,6 +192,19 @@ class AgentOrchestrator:
                             step.completed_at = now()
                             await self.w.session.commit()
                             raise
+                        from app.memory.service import MemoryCandidate, MemoryService
+
+                        await MemoryService(self.w.session, self.w.user_id, self.w.secrets).write(
+                            MemoryCandidate(
+                                layer="EXECUTION",
+                                content=f"Step {job.current_step}: {request.tool_name} completed under authoritative policy",
+                                workspace_id=job.workspace_id,
+                                job_id=job.id,
+                                source_type="SYSTEM",
+                                source_id=str(job.current_step),
+                                confidence=1,
+                            )
+                        )
                         observations.append(
                             {
                                 "tool": request.tool_name,
@@ -307,7 +338,11 @@ class AgentOrchestrator:
             )
             job.failure_code = error.code
             job.failure_message_safe = error.code
-        except Exception:
+        except Exception as exc:
+            from app.platform.telemetry import ErrorTracker
+            from app.platform.version import APP_VERSION
+
+            ErrorTracker().capture(exc, APP_VERSION, "worker")
             job.status = "FAILED"
             job.failure_code = "INTERNAL"
             job.failure_message_safe = "INTERNAL"

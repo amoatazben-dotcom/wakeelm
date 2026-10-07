@@ -26,6 +26,7 @@ class AgentWorker:
             notify,
         )
         self.stopping = False
+        self.last_retention = 0
 
     def services(self, session, user_id):
         workspace = WorkspaceService(session, user_id, self.settings, self.secrets, self.limits)
@@ -97,6 +98,13 @@ class AgentWorker:
     async def run_once(self):
         async with self.sessions() as session:
             await self.expire(session)
+            import time
+
+            if time.monotonic() - self.last_retention > 3600:
+                from app.platform.retention import RetentionService
+
+                await RetentionService(session, self.settings, self.secrets, self.limits).sweep()
+                self.last_retention = time.monotonic()
             job = await session.scalar(
                 select(AgentJob)
                 .where(AgentJob.status == "QUEUED")
@@ -123,7 +131,12 @@ class AgentWorker:
                 max(0, (now() - job.created_at.replace(tzinfo=now().tzinfo)).total_seconds()),
                 observe=True,
             )
-            with trace_context(user_id=job.user_id, job_id=job.id, workspace_id=job.workspace_id):
+            with trace_context(
+                parent=f"00-{job.result_json.get('trace_id', '')}-{__import__('uuid').uuid4().hex[:16]}-01",
+                user_id=job.user_id,
+                job_id=job.id,
+                workspace_id=job.workspace_id,
+            ):
                 return await self.execute_job(session, job)
 
     async def execute_job(self, session, job):

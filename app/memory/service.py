@@ -1,5 +1,4 @@
 import hashlib
-import json
 import re
 from datetime import datetime
 
@@ -9,10 +8,8 @@ from sqlalchemy import or_, select
 from app.agent.ownership import AgentOwnership
 from app.core.exceptions import SafeError
 from app.db.base import now
-from app.db.models import Provider
 from app.db.models.platform import MemoryItem
 from app.db.models.projects import Workspace
-from app.integrations.sanitizer import ExternalToolOutputSanitizer
 
 
 class MemoryCandidate(BaseModel):
@@ -63,15 +60,9 @@ class MemoryService:
         await self.validate_scope(candidate.workspace_id, candidate.job_id)
         if candidate.source_type == "MODEL_INFERENCE" and not candidate.approved:
             raise SafeError("POLICY_DENIED")
-        credentials = []
-        for provider in await self.session.scalars(
-            select(Provider).where(Provider.user_id == self.user_id)
-        ):
-            credentials.append(self.secrets.decrypt(provider.encrypted_api_token))
-            credentials.extend(
-                json.loads(self.secrets.decrypt(provider.extra_headers_encrypted)).values()
-            )
-        sanitizer = ExternalToolOutputSanitizer(secrets=credentials)
+        from app.platform.redaction import user_sanitizer
+
+        sanitizer = await user_sanitizer(self.session, self.user_id, self.secrets)
         if sanitizer.clean(candidate.content) != candidate.content:
             raise SafeError("MEMORY_SECRET_DENIED")
         # Search terms are not persisted in clear text. Retrieval decrypts only owned bounded rows.

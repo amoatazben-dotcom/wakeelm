@@ -219,6 +219,8 @@ async def collection(
     action: str | None = None,
     since: str | None = None,
     until: str | None = None,
+    risk: str | None = None,
+    integration: str | None = None,
 ):
     await admin(request, "audit" if collection in {"audit", "admin-audit"} else "read")
     if collection not in COLLECTIONS or not 0 <= page <= 10000:
@@ -235,6 +237,13 @@ async def collection(
     ]:
         if value is not None and hasattr(model, name):
             stmt = stmt.where(getattr(model, name) == value)
+    if collection == "audit":
+        if job_id:
+            stmt = stmt.where(AuditLog.entity_type == "agent_job", AuditLog.entity_id == job_id)
+        if risk:
+            stmt = stmt.where(AuditLog.metadata_json["risk"].as_string() == risk)
+        if integration:
+            stmt = stmt.where(AuditLog.metadata_json["integration"].as_string() == integration)
     from datetime import datetime
 
     try:
@@ -251,6 +260,22 @@ async def collection(
             await session.scalars(stmt.order_by(primary.desc()).offset(page * 50).limit(50))
         )
         values = [{field: getattr(row, field) for field in fields} for row in rows]
+        if collection == "jobs" and rows:
+            usage = list(
+                await session.scalars(
+                    select(UsageEntry)
+                    .where(
+                        UsageEntry.job_id.in_([row.id for row in rows]),
+                        UsageEntry.operation == "model",
+                    )
+                    .order_by(UsageEntry.id.desc())
+                )
+            )
+            for value in values:
+                calls = [entry for entry in usage if entry.job_id == value["id"]]
+                value["provider_id"] = calls[0].provider_id if calls else None
+                value["model_id"] = calls[0].model_id if calls else None
+                value["estimated_cost"] = str(sum(entry.estimated_cost or 0 for entry in calls))
     return {"items": values, "total": total, "page": page}
 
 
@@ -261,6 +286,7 @@ class AdminChange(BaseModel):
     plan: str | None = None
     limits: dict = Field(default_factory=dict)
     role: str | None = None
+    confirmation: str | None = Field(default=None, max_length=100)
 
 
 @router.post("/control/{kind}/{target}")
@@ -268,6 +294,7 @@ async def control(request: Request, kind: str, target: str, change: AdminChange)
     permission = {
         "flag": "security" if target.startswith("disable_") else "operate",
         "identity": "security",
+        "user-data": "security",
         "quota": "quotas",
         "user": "support",
         "job": "support",
@@ -286,6 +313,17 @@ async def control(request: Request, kind: str, target: str, change: AdminChange)
             if "percentage" in change.targets and (
                 not isinstance(change.targets["percentage"], int)
                 or not 0 <= change.targets["percentage"] <= 100
+            ):
+                raise HTTPException(400)
+            if "users" in change.targets and (
+                not isinstance(change.targets["users"], list)
+                or len(change.targets["users"]) > 1000
+                or any(type(value) is not int or value < 1 for value in change.targets["users"])
+            ):
+                raise HTTPException(400)
+            if "plans" in change.targets and (
+                not isinstance(change.targets["plans"], list)
+                or any(value not in DEFAULT_LIMITS for value in change.targets["plans"])
             ):
                 raise HTTPException(400)
             # Emergency global stop cannot accidentally be a partial rollout.
@@ -315,6 +353,15 @@ async def control(request: Request, kind: str, target: str, change: AdminChange)
             await session.merge(
                 AdminIdentity(subject=target, role=change.role, enabled=bool(change.enabled))
             )
+        elif kind == "user-data":
+            if change.confirmation != target or not target.isascii() or not target.isdigit():
+                raise HTTPException(400, "Explicit user ID confirmation required")
+            from app.platform.retention import RetentionService
+
+            state = request.app.state
+            await RetentionService(
+                session, state.settings, state.secrets, state.limits
+            ).delete_user_data(int(target))
         elif kind == "job":
             job = await session.get(AgentJob, target, with_for_update=True)
             if not job:
@@ -381,4 +428,22 @@ async def system_health(request: Request):
 @router.get("/metrics", response_class=PlainTextResponse)
 async def metrics(request: Request):
     await admin(request)
+    from app.platform.telemetry import COUNTERS
+
+    async with request.app.state.sessions() as session:
+        COUNTERS["queue_depth"] = await session.scalar(
+            select(func.count()).select_from(AgentJob).where(AgentJob.status == "QUEUED")
+        )
+        COUNTERS["active_jobs"] = await session.scalar(
+            select(func.count())
+            .select_from(AgentJob)
+            .where(AgentJob.status.in_(["RUNNING", "PLANNING"]))
+        )
+        COUNTERS["workspace_storage"] = await session.scalar(
+            select(func.coalesce(func.sum(Workspace.size_bytes), 0)).where(
+                Workspace.status != "DELETED"
+            )
+        )
+    pool = request.app.state.engine.sync_engine.pool
+    COUNTERS["db_pool_usage"] = getattr(pool, "checkedout", lambda: 0)()
     return PlainTextResponse(render_metrics(), media_type="text/plain; version=0.0.4")

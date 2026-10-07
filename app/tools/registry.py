@@ -322,6 +322,18 @@ class ToolRegistry:
         return spec, args
 
     async def policy(self, spec, args):
+        from app.platform.flags import FeatureFlags
+
+        flags = FeatureFlags(self.workspaces.session, self.workspaces.user_id)
+        if (
+            spec.name.startswith("github.create")
+            or spec.name == "git.push_branch"
+            or (spec.name in self.external and str(spec.risk) != "LOW")
+        ):
+            await flags.deny_if("disable_external_writes")
+            await flags.deny_if(
+                "disable_github_push" if spec.name not in self.external else "disable_mcp_writes"
+            )
         if spec.name in self.external:
             adapter = self.external[spec.name]
             audit(
@@ -440,6 +452,13 @@ class ToolRegistry:
         )
 
     async def execute(self, request):
+        from app.db.models import User
+
+        active = await self.workspaces.session.scalar(
+            select(User.is_active).where(User.id == self.workspaces.user_id)
+        )
+        if not active:
+            raise SafeError("INACTIVE")
         await self.hydrate()
         await AgentOwnership(self.workspaces.session, self.workspaces.user_id).job(self.job.id)
         if await self.cancelled():
@@ -482,6 +501,35 @@ class ToolRegistry:
             raise
         if self.job.tool_calls_count >= self.workspaces.settings.max_tool_calls:
             raise SafeError("AGENT_LIMIT")
+        from app.platform.telemetry import metric
+
+        metric("tool_calls")
+        intent = None
+        if spec.name in self.external and str(spec.risk) != "LOW":
+            from app.db.models.platform import ExternalAction
+
+            key = hashlib.sha256(
+                json.dumps(
+                    {
+                        "user": self.job.user_id,
+                        "job": self.job.id,
+                        "step": self.job.current_step,
+                        "tool": spec.name,
+                        "args": args,
+                    },
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest()
+            intent = await self.workspaces.session.get(ExternalAction, key)
+            if intent:
+                if intent.status == "COMPLETED":
+                    return json.loads(self.workspaces.secrets.decrypt(intent.result_encrypted))
+                raise SafeError("WRITE_OUTCOME_UNKNOWN")
+            intent = ExternalAction(
+                key=key, user_id=self.job.user_id, job_id=self.job.id, status="PENDING"
+            )
+            self.workspaces.session.add(intent)
+            await self.workspaces.session.commit()
         log = ToolCall(
             job_id=self.job.id,
             tool_name=spec.name,
@@ -498,6 +546,9 @@ class ToolRegistry:
             result = spec.output_schema.model_validate(
                 {"data": result, "summary": "TOOL_COMPLETED"}
             ).data
+            if intent:
+                intent.result_encrypted = self.workspaces.secrets.encrypt(json.dumps(result))
+                intent.status = "COMPLETED"
             log.status = "COMPLETED"
             log.output_summary = {"status": "OK"}
             serialized = json.dumps(result, ensure_ascii=False)
@@ -517,6 +568,14 @@ class ToolRegistry:
                 }
             return result
         except SafeError as error:
+            if intent and error.code in {
+                "SCOPE_REQUIRED",
+                "AUTH_REQUIRED",
+                "AUTH_FAILED",
+                "POLICY_DENIED",
+                "KILL_SWITCH_ACTIVE",
+            }:
+                await self.workspaces.session.delete(intent)
             if spec.name in {
                 "git.push_branch",
                 "github.create_pull_request",
@@ -559,8 +618,45 @@ class ToolRegistry:
                 "agent_job",
                 self.job.id,
                 status=log.status,
+                risk=str(spec.risk),
+                job_id=self.job.id,
+                integration="MCP"
+                if spec.name in self.external
+                else "GITHUB"
+                if spec.name.startswith(("git.", "github."))
+                else "CORE",
             )
+            import uuid
+
+            from app.db.models.platform import UsageEntry
+
             log.completed_at = now()
+            self.workspaces.session.add(
+                UsageEntry(
+                    idempotency_key="tool:" + uuid.uuid4().hex,
+                    user_id=self.job.user_id,
+                    job_id=self.job.id,
+                    operation="tool",
+                    tool_calls=1,
+                    input_tokens=0,
+                    output_tokens=0,
+                    estimated_cost=0,
+                    pricing_status="KNOWN",
+                    duration_ms=max(
+                        0,
+                        int(
+                            (
+                                log.completed_at
+                                - log.started_at.replace(tzinfo=log.completed_at.tzinfo)
+                            ).total_seconds()
+                            * 1000
+                        ),
+                    )
+                    if log.started_at
+                    else 0,
+                    status=log.status,
+                )
+            )
             await self.workspaces.session.commit()
 
     async def _dispatch(self, name, args, approved):
