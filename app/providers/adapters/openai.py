@@ -86,6 +86,46 @@ class OpenAICompatibleAdapter(AIProviderAdapter):
         except (KeyError, IndexError, TypeError, ValueError):
             raise SafeError("INVALID_RESPONSE") from None
 
+    async def stream_chat_completion(self, model, messages, max_tokens=1800):
+        async for item in self.http.stream(
+            self.api_url + "/chat/completions",
+            self.headers,
+            {
+                "model": model,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "stream": True,
+                "stream_options": {"include_usage": True},
+            },
+        ):
+            if "error" in item:
+                raise SafeError("INVALID_RESPONSE")
+            choices = item.get("choices", [])
+            if not isinstance(choices, list):
+                raise SafeError("INVALID_RESPONSE")
+            content = ""
+            if choices:
+                try:
+                    content = choices[0].get("delta", {}).get("content") or ""
+                    if not isinstance(content, str):
+                        raise ValueError()
+                except (AttributeError, TypeError, ValueError):
+                    raise SafeError("INVALID_RESPONSE") from None
+            usage = item.get("usage") or {}
+            if not isinstance(usage, dict):
+                raise SafeError("INVALID_RESPONSE")
+            yield (
+                content,
+                {
+                    k: v
+                    for k, v in usage.items()
+                    if k in {"prompt_tokens", "completion_tokens"}
+                    and isinstance(v, int)
+                    and not isinstance(v, bool)
+                    and v >= 0
+                },
+            )
+
     async def create_agent_completion(self, model, messages, tools=None, max_tokens=1800):
         import json
 
