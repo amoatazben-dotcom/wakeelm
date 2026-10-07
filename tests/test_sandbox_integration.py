@@ -146,3 +146,21 @@ async def test_real_job_failed_test_repair_and_pass(stack, tmp_path):
     assert job.status == "COMPLETED", job.failure_code
     assert job.repair_count == 1 and job.tool_calls_count == 6 and planner.calls == 2
     assert await w.read(job.workspace_id, "main.py") == b"VALUE = 3\n"
+
+
+async def test_real_container_enforces_resource_and_privilege_limits(stack, tmp_path):
+    code = """from pathlib import Path
+
+def test_kernel_limits():
+    cg = Path('/sys/fs/cgroup')
+    assert int((cg/'memory.max').read_text()) == 256*1024*1024
+    assert int((cg/'pids.max').read_text()) == 64
+    quota, period = (cg/'cpu.max').read_text().split()
+    assert int(quota)/int(period) == 1
+    status = Path('/proc/self/status').read_text()
+    assert 'NoNewPrivs:\t1' in status
+    assert int(next(line.split()[1] for line in status.splitlines() if line.startswith('CapEff:')),16)==0
+"""
+    w, job, runner = await sandbox(stack, tmp_path, code)
+    result = await runner.run(w, job, "python_tests", never)
+    assert result.status == "COMPLETED" and result.exit_code == 0, result.output

@@ -69,3 +69,9 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - run: npm audit --audit-level=high
+  container-security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: docker build --build-arg BUILD_GIT_SHA=${{ github.sha }} -t wakeelm-candidate:ci .
+      - run: sh scripts/scan_container.sh wakeelm-candidate:ci container-audit.json

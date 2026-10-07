@@ -1,0 +1,70 @@
+name: Controlled Railway deployment
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Deployment environment (configure protected GitHub environments first)
+        type: choice
+        options: [staging, production]
+        default: staging
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: railway-${{ inputs.target }}
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Require successful Checks for this exact main commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ github.sha }}
+        run: |
+          result=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow checks.yml --commit "$CANDIDATE_SHA" --limit 1 --json conclusion --jq '.[0].conclusion')
+          test "$result" = success
+      - name: Require every final gate for production
+        if: inputs.target == 'production'
+        env:
+          CANDIDATE_SHA: ${{ github.sha }}
+          GATE_REPORT: ${{ vars.RELEASE_GATE_REPORT_JSON }}
+        run: |
+          python -c 'import os,pathlib; pathlib.Path("/tmp/release-gates.json").write_text(os.environ["GATE_REPORT"])'
+          python scripts/check_release_gates.py --commit "$CANDIDATE_SHA" --report /tmp/release-gates.json
+      - name: Validate environment configuration
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SERVICE: ${{ vars.RAILWAY_SERVICE_ID }}
+          TARGET_ENVIRONMENT: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          BASE_URL: ${{ vars.APP_PUBLIC_URL }}
+        run: |
+          test -n "$RAILWAY_TOKEN"
+          test -n "$SERVICE"
+          test -n "$TARGET_ENVIRONMENT"
+          case "$BASE_URL" in https://*) ;; *) exit 1 ;; esac
+      - name: Deploy reviewed source using a pinned CLI
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SERVICE: ${{ vars.RAILWAY_SERVICE_ID }}
+          TARGET_ENVIRONMENT: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+        run: npx --yes @railway/cli@5.63.4 up --ci --service "$SERVICE" --environment "$TARGET_ENVIRONMENT"
+      - name: Verify deployed readiness and exact source version
+        env:
+          BASE_URL: ${{ vars.APP_PUBLIC_URL }}
+          CANDIDATE_SHA: ${{ github.sha }}
+        run: |
+          curl --fail --retry 12 --retry-delay 5 --retry-all-errors "$BASE_URL/ready"
+          curl --fail "$BASE_URL/version" -o /tmp/version.json
+          python -c 'import json,os; assert json.load(open("/tmp/version.json"))["build_git_sha"]==os.environ["CANDIDATE_SHA"]'
