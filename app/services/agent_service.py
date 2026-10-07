@@ -21,6 +21,11 @@ class AgentService:
         )
 
     async def create(self, workspace_id, mode, request, chat_id=None):
+        from app.platform.flags import FeatureFlags
+        from app.platform.usage import QuotaEngine
+
+        await FeatureFlags(self.w.session, self.w.user_id).deny_if("disable_new_jobs")
+        await QuotaEngine(self.w.session, self.w.user_id).reserve("job")
         workspace = await self.w.owned(workspace_id, True)
         try:
             mode = AgentMode(mode)
@@ -38,7 +43,10 @@ class AgentService:
         if active:
             raise SafeError("WORKSPACE_BUSY")
         await self.w.idle(workspace_id)
-        await self.models.active()
+        if hasattr(self.models, "route"):
+            await self.models.route(request)
+        else:
+            await self.models.active()
         job = AgentJob(
             id=str(uuid.uuid4()),
             user_id=self.w.user_id,

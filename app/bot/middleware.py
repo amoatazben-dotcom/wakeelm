@@ -48,7 +48,7 @@ class ServicesMiddleware(BaseMiddleware):
                     session=session,
                     user=user,
                     providers=providers,
-                    models=ModelService(providers),
+                    models=ModelService(providers, self.settings),
                     secrets=self.secrets,
                     workspaces=WorkspaceService(
                         session, user.id, self.settings, self.secrets, self.limits
@@ -64,7 +64,11 @@ class ServicesMiddleware(BaseMiddleware):
                     mcp=MCPService(session, user.id, self.settings, self.secrets, self.limits),
                     integration_jobs=IntegrationJobs(data["workspaces"]),
                 )
-                result = await handler(event, data)
+                from app.platform.telemetry import metric, trace_context
+
+                metric("telegram_updates_total")
+                with trace_context(user_id=user.id):
+                    result = await handler(event, data)
                 await session.commit()
                 return result
         except SafeError as error:

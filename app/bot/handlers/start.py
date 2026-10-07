@@ -65,6 +65,7 @@ async def screen(event, target, user, state, session, providers, models, **data)
                 "all",
             ]
         ]
+        rows += [[("routing.title", "routing:menu")]]
         rows += [[("model.refresh", "models:refresh:0:0")], [("common.back", "menu:home")]]
         await say(event, tr(lang, "menu.models"), keyboard(lang, rows))
     elif target in {"files", "projects"}:
@@ -81,6 +82,10 @@ async def screen(event, target, user, state, session, providers, models, **data)
     elif target == "chat":
         await state.set_state(Chat.active)
         await say(event, tr(lang, "chat.ready"), back(lang))
+    elif target == "usage":
+        from app.bot.handlers.routing import usage_menu
+
+        await usage_menu(event, user, session)
     elif target == "audit":
         logs = list(
             await session.scalars(

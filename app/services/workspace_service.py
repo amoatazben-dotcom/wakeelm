@@ -60,6 +60,15 @@ class WorkspaceService:
         audit(self.session, self.user_id, action, "workspace", workspace.id, **safe)
 
     async def ingest(self, filename, data, mime=None):
+        from app.platform.flags import FeatureFlags
+        from app.platform.usage import QuotaEngine
+
+        await FeatureFlags(self.session, self.user_id).deny_if("disable_uploads")
+        quotas = QuotaEngine(self.session, self.user_id)
+        limits = await quotas.limits()
+        if len(data) > limits["max_upload_bytes"]:
+            raise SafeError("UPLOAD_TOO_LARGE")
+        await quotas.resource("storage_bytes", len(data))
         safe_relative(filename)
         if "/" in filename or len(filename) > 255:
             raise SafeError("PATH_DENIED")

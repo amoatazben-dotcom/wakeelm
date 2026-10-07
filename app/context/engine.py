@@ -1,6 +1,6 @@
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy import select
 
@@ -16,9 +16,15 @@ class ContextPackage:
     token_estimate: int
     budget: int
     manifest: dict
+    memories: list = field(default_factory=list)
 
     def render(self):
-        return "\n\n".join(
+        memory = (
+            "UNTRUSTED_SCOPED_MEMORY\n" + json.dumps(self.memories, ensure_ascii=False) + "\n"
+            if self.memories
+            else ""
+        )
+        return memory + "\n\n".join(
             f"PATH: {item['path']} LINES: {item['start_line']}-{item['end_line']}\n{item['text']}"
             for item in self.items
         )
@@ -44,6 +50,15 @@ class ContextEngine:
             - token_estimate(history)
         )
         budget = max(0, min(self.workspaces.settings.context_max_tokens, available))
+        from app.memory.service import MemoryService
+
+        memories = await MemoryService(
+            self.workspaces.session, self.workspaces.user_id, self.workspaces.secrets
+        ).retrieve(request, workspace_id=workspace_id, layers=["PROJECT", "KNOWLEDGE"], limit=4)
+        memory_tokens = token_estimate(json.dumps(memories, ensure_ascii=False)) if memories else 0
+        if memory_tokens > budget // 4:
+            memories, memory_tokens = [], 0
+        budget -= memory_tokens
         manifest = await self.workspaces.manifest(workspace_id)
         terms = list(dict.fromkeys(re.findall(r"[\w./-]{3,}", request.lower())))[:20]
         scores = {}
@@ -106,6 +121,16 @@ class ContextEngine:
                     "start_line": chunk.start_line,
                     "end_line": chunk.end_line,
                     "text": text,
+                    "provenance": {
+                        "source_type": "PROJECT_FILE",
+                        "source_id": str(file.id),
+                        "path": file.relative_path,
+                        "workspace_id": workspace_id,
+                        "trust_level": "UNTRUSTED",
+                        "timestamp": __import__("datetime")
+                        .datetime.now(__import__("datetime").timezone.utc)
+                        .isoformat(),
+                    },
                     "reason": "REQUEST_MATCH" if score > 1 else "PROJECT_MANIFEST",
                     "retrieval_method": "SEMANTIC" if chunk.id in semantic_ids else "EXACT",
                     "truncated": len(text)
@@ -114,10 +139,15 @@ class ContextEngine:
             )
             if len(selected) >= 12:
                 break
-        return ContextPackage(selected, used, budget, manifest)
+        from app.context.compressor import ContextCompressor
+
+        selected = ContextCompressor().compress(selected, budget)
+        return ContextPackage(
+            selected, used + memory_tokens, budget + memory_tokens, manifest, memories
+        )
 
     async def answer(self, workspace_id, question, models):
-        model = await models.active()
+        model = await models.route(question) if hasattr(models, "route") else await models.active()
         context = await self.retrieve(workspace_id, question, model.metadata_json)
         paths = {item["path"] for item in context.items}
         prompt = (

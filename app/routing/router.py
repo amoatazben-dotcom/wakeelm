@@ -1,6 +1,6 @@
 import math
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.exceptions import SafeError
 from app.db.models import Model, ModelHealthCheck, Provider
@@ -50,6 +50,26 @@ class ModelRouter:
                 .limit(1000)
             )
         )
+        health_rank = (
+            select(
+                ModelHealthCheck.id,
+                func.row_number()
+                .over(partition_by=ModelHealthCheck.model_id, order_by=ModelHealthCheck.id.desc())
+                .label("position"),
+            )
+            .where(ModelHealthCheck.model_id.in_([model.id for model, _ in rows]))
+            .subquery()
+        )
+        health = list(
+            await self.session.scalars(
+                select(ModelHealthCheck)
+                .join(health_rank, ModelHealthCheck.id == health_rank.c.id)
+                .where(health_rank.c.position <= 20)
+            )
+        )
+        histories = {}
+        for check in health:
+            histories.setdefault(check.model_id, []).append(check)
         ranked = []
         for model, provider in rows:
             if provider.id in request.excluded_providers:
@@ -61,14 +81,7 @@ class ModelRouter:
             window = number((model.metadata_json or {}).get("context_length"))
             if request.context_size and (not window or request.context_size > window * 0.8):
                 continue
-            history = list(
-                await self.session.scalars(
-                    select(ModelHealthCheck)
-                    .where(ModelHealthCheck.model_id == model.id)
-                    .order_by(ModelHealthCheck.id.desc())
-                    .limit(20)
-                )
-            )
+            history = histories.get(model.id, [])
             failure_rate = sum(h.error_code is not None for h in history) / max(1, len(history))
             latency = (
                 sum(h.latency_ms for h in history) / max(1, len(history)) if history else 30000

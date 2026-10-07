@@ -32,7 +32,8 @@ class AgentWorker:
         models = ModelService(
             ProviderService(
                 session, user_id, self.secrets, self.http, self.limits, self.settings.max_models
-            )
+            ),
+            self.settings,
         )
         return workspace, models
 
@@ -115,14 +116,25 @@ class AgentWorker:
                 return True
             job.status = "PLANNING"
             await session.commit()
-            workspace, models = self.services(session, job.user_id)
-            if job.kind != "AGENT":
-                from app.integrations.jobs import IntegrationJobExecutor
+            from app.platform.telemetry import metric, trace_context
 
-                await IntegrationJobExecutor(workspace, self.notify).run(job)
-            else:
-                await AgentOrchestrator(workspace, models, notify=self.notify).run(job.id)
-            return True
+            metric(
+                "worker_lag",
+                max(0, (now() - job.created_at.replace(tzinfo=now().tzinfo)).total_seconds()),
+                observe=True,
+            )
+            with trace_context(user_id=job.user_id, job_id=job.id, workspace_id=job.workspace_id):
+                return await self.execute_job(session, job)
+
+    async def execute_job(self, session, job):
+        workspace, models = self.services(session, job.user_id)
+        if job.kind != "AGENT":
+            from app.integrations.jobs import IntegrationJobExecutor
+
+            await IntegrationJobExecutor(workspace, self.notify).run(job)
+        else:
+            await AgentOrchestrator(workspace, models, notify=self.notify).run(job.id)
+        return True
 
     async def run(self):
         # Standby replicas never recover a job owned by the live lease holder.

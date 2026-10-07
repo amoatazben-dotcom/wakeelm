@@ -9,6 +9,7 @@ from app.bot.handlers import (
     integrations,
     models,
     providers,
+    routing,
     start,
     workspaces,
 )
@@ -34,7 +35,9 @@ def create_dispatcher(redis, sessions, secrets, http, limits, settings):
             for module in (
                 start,
                 providers,
+                routing,
                 models,
+                routing,
                 workspaces,
                 integrations,
                 agent,

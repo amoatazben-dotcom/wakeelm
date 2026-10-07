@@ -14,8 +14,12 @@ class AgentPlanner:
 
     async def plan(self, job, registry, observations=None):
         await registry.hydrate()
-        model = await self.models.active()
         request = self.workspaces.secrets.decrypt(job.request_text)
+        model = (
+            await self.models.route(request)
+            if hasattr(self.models, "route")
+            else await self.models.active()
+        )
         context = await ContextEngine(self.workspaces).retrieve(
             job.workspace_id, request, model.metadata_json
         )
@@ -50,12 +54,14 @@ class AgentPlanner:
         ) == "SUPPORTED"
         if await registry.cancelled():
             raise SafeError("JOB_CANCELLED")
-        job.model_requests += 1
+        if not hasattr(self.models, "routing"):
+            job.model_requests += 1
         content, usage = await self.models.agent_completion(
             model, messages, registry.schemas() if supported else None
         )
-        job.input_tokens += usage.get("prompt_tokens", 0)
-        job.output_tokens += usage.get("completion_tokens", 0)
+        if not hasattr(self.models, "routing"):
+            job.input_tokens += usage.get("prompt_tokens", 0)
+            job.output_tokens += usage.get("completion_tokens", 0)
         try:
             plan = AgentPlan.model_validate_json(content)
             if len(plan.steps) > job.max_steps - job.current_step:

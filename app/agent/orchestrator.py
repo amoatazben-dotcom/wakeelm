@@ -28,11 +28,45 @@ class AgentOrchestrator:
             return job
         started = time.monotonic()
         base_elapsed = job.elapsed_ms
+        from app.platform.telemetry import metric
+
+        metric("active_jobs", 1)
 
         async def cancelled():
             return bool(await self.w.limits.redis.get("agent:cancel:" + job.id))
 
         registry = ToolRegistry(self.w, job, cancelled, self.runner)
+        from decimal import Decimal
+
+        from app.routing.budget import ExecutionBudget
+
+        if hasattr(self.models, "routing"):
+            self.models.job = job
+            self.models.budget = ExecutionBudget(
+                max_model_calls=getattr(self.w.settings, "max_job_model_calls", 12),
+                max_total_tokens=getattr(self.w.settings, "max_job_tokens", 100000),
+                max_estimated_cost=Decimal(str(getattr(self.w.settings, "max_job_cost", 1))),
+                max_duration=max(1, self.w.settings.max_task_duration - base_elapsed / 1000),
+                model_calls=job.model_requests,
+                total_tokens=job.input_tokens + job.output_tokens,
+            )
+        from app.routing.preferences import RoutingPreferences
+
+        prefs = await RoutingPreferences(self.w.session, self.w.user_id).get()
+        from app.agent.specialists import CoordinatorAgent
+
+        coordinator = CoordinatorAgent(self.w, self.models, job, registry)
+        if hasattr(self.models, "routing"):
+            from sqlalchemy import func
+
+            from app.db.models.platform import UsageEntry
+
+            spent = await self.w.session.scalar(
+                select(func.coalesce(func.sum(UsageEntry.estimated_cost), 0)).where(
+                    UsageEntry.job_id == job.id
+                )
+            )
+            self.models.budget.estimated_cost = Decimal(str(spent))
 
         async def progress():
             if self.notify:
@@ -62,12 +96,46 @@ class AgentOrchestrator:
                         job.status = "PLANNING"
                         await self.w.session.commit()
                         await progress()
-                        plan = await self._plan(job, registry)
+                        specialist_evidence = []
+                        from app.platform.flags import FeatureFlags
+
+                        flags = FeatureFlags(self.w.session, self.w.user_id)
+                        if prefs["agent_mode"] == "MULTI_AGENT":
+                            await flags.require("multi_agent")
+                        if prefs["agent_mode"] == "DEEP":
+                            await flags.require("deep_mode")
+                        if prefs["agent_mode"] == "MULTI_AGENT" and hasattr(self.models, "routing"):
+                            result = await coordinator.run_role("CodeAnalysisAgent")
+                            specialist_evidence.append(result.model_dump())
+                        plan = await self._plan(job, registry, specialist_evidence)
                         job.plan_encrypted = self.w.secrets.encrypt(plan.model_dump_json())
                         job.plan_json = {
                             "tools": [s.tool_name for s in plan.steps],
                             "risk": plan.risk,
                         }
+                    risky_plan = plan.risk in {"HIGH", "CRITICAL"} or any(
+                        step.tool_name.startswith(("git.push", "github.create", "mcp."))
+                        or any(
+                            word in str(step.arguments).lower()
+                            for word in [
+                                "auth",
+                                "crypto",
+                                "secret",
+                                "permission",
+                                "deploy",
+                                ".github/",
+                            ]
+                        )
+                        for step in plan.steps
+                    )
+                    if risky_plan and hasattr(self.models, "routing"):
+                        security = await coordinator.run_role(
+                            "SecurityReviewAgent",
+                            evidence={"proposed_plan": plan.model_dump()},
+                            key="pre-execution-security",
+                        )
+                        if security.status != "COMPLETED" or security.risks:
+                            raise SafeError("SECURITY_REVIEW_REQUIRED")
                     job.status = "RUNNING"
                     await self.w.session.commit()
                     await progress()
@@ -161,6 +229,51 @@ class AgentOrchestrator:
                             plan.answer = next_plan.answer
                             job.plan_encrypted = self.w.secrets.encrypt(plan.model_dump_json())
                             await self.w.session.commit()
+                    if hasattr(self.models, "routing"):
+                        if prefs["agent_mode"] == "MULTI_AGENT":
+                            await coordinator.record(
+                                "ImplementationAgent",
+                                "Approved plan tools completed; not a validation claim.",
+                                ["CodeAnalysisAgent"],
+                            )
+                            test_result = await coordinator.run_role(
+                                "TestAgent",
+                                dependencies=["ImplementationAgent"],
+                                evidence={"observations": observations},
+                            )
+                            if test_result.status != "COMPLETED" or test_result.risks:
+                                raise SafeError("REVIEW_REQUIRED")
+                        if prefs["agent_mode"] in {"DEEP", "MULTI_AGENT"}:
+                            review = await coordinator.run_role(
+                                "ReviewAgent",
+                                evidence={"observations": observations},
+                                key="final-review",
+                            )
+                            if review.status != "COMPLETED" or review.risks:
+                                raise SafeError("REVIEW_REQUIRED")
+                        risky = plan.risk in {"HIGH", "CRITICAL"} or any(
+                            step.tool_name.startswith(("git.push", "github.create", "mcp."))
+                            or any(
+                                word in str(step.arguments).lower()
+                                for word in [
+                                    "auth",
+                                    "crypto",
+                                    "secret",
+                                    "permission",
+                                    "deploy",
+                                    ".github/",
+                                ]
+                            )
+                            for step in plan.steps
+                        )
+                        if risky:
+                            security = await coordinator.run_role(
+                                "SecurityReviewAgent",
+                                evidence={"observations": observations},
+                                key="security-review",
+                            )
+                            if security.status != "COMPLETED" or security.risks:
+                                raise SafeError("SECURITY_REVIEW_REQUIRED")
                     job.result_json = {
                         **job.result_json,
                         "answer_encrypted": self.w.secrets.encrypt(plan.answer),
@@ -199,6 +312,10 @@ class AgentOrchestrator:
             job.failure_code = "INTERNAL"
             job.failure_message_safe = "INTERNAL"
         finally:
+            metric("active_jobs", -1)
+            metric("job_duration", time.monotonic() - started, observe=True)
+            if job.status in {"FAILED", "LIMIT_REACHED"}:
+                metric("job_failures")
             job.elapsed_ms = base_elapsed + int((time.monotonic() - started) * 1000)
             if job.status in TERMINAL and not job.completed_at:
                 job.completed_at = now()

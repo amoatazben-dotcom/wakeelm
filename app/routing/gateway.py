@@ -82,8 +82,32 @@ class RoutingGateway:
             if candidate.provider_id in excluded:
                 continue
             cost = CostEstimator.estimate(candidate.pricing_json or {}, input_tokens, output_tokens)
-            budget.reserve(input_tokens + output_tokens, cost)
+            from app.platform.flags import FeatureFlags
+            from app.platform.usage import QuotaEngine
+
+            await FeatureFlags(self.models.session, self.models.user_id).deny_if(
+                f"disable_provider_{candidate.provider_id}"
+            )
+            budget.reserve(
+                input_tokens + output_tokens,
+                cost if cost is not None else __import__("decimal").Decimal("0.10"),
+            )
+            ledger = await QuotaEngine(
+                self.models.session, self.models.user_id, getattr(self.models, "settings", None)
+            ).reserve(
+                "model",
+                input_tokens,
+                output_tokens,
+                cost,
+                candidate.provider_id,
+                candidate.id,
+                getattr(getattr(self.models, "job", None), "id", None),
+            )
+            await self.models.session.commit()
             breaker = CircuitBreaker(self.models.providers.limits.redis, f"model:{candidate.id}")
+            from app.platform.telemetry import metric
+
+            metric("model_calls")
             started = time.monotonic()
             error = None
             try:
@@ -96,25 +120,42 @@ class RoutingGateway:
                 usage = result[1]
                 incoming = max(0, int(usage.get("prompt_tokens", 0) or 0))
                 outgoing = max(0, int(usage.get("completion_tokens", 0) or 0))
+                ledger.input_tokens, ledger.output_tokens = incoming, outgoing
+                ledger.actual_cost = CostEstimator.estimate(
+                    candidate.pricing_json or {}, incoming, outgoing
+                )
+                if ledger.actual_cost is not None:
+                    ledger.estimated_cost = ledger.actual_cost
+                ledger.status = "COMPLETED"
+                metric("model_tokens", incoming + outgoing)
+                if ledger.actual_cost is not None:
+                    metric("model_cost", float(ledger.actual_cost))
                 if job:
                     job.input_tokens += incoming
                     job.output_tokens += outgoing
                 budget.account(
                     incoming + outgoing,
-                    CostEstimator.estimate(candidate.pricing_json or {}, incoming, outgoing),
+                    CostEstimator.estimate(candidate.pricing_json or {}, incoming, outgoing)
+                    if ledger.actual_cost is not None
+                    else __import__("decimal").Decimal("0.10"),
                 )
                 return result
             except SafeError as exc:
                 error = exc
+                ledger.status = "FAILED"
                 failure = FAILURES.get(exc.code, "UNKNOWN")
                 if failure not in RETRYABLE:
                     raise
                 if failure == "AUTH_FAILED":
                     excluded.add(candidate.provider_id)
                 await breaker.failure()
+                metric("provider_errors")
+                metric("fallback_count")
                 self.fallbacks.append({"model_id": ident, "reason": failure})
                 last_error = exc
             finally:
+                metric("provider_latency", time.monotonic() - started, observe=True)
+                ledger.duration_ms = int((time.monotonic() - started) * 1000)
                 self.models.session.add(
                     ModelHealthCheck(
                         model_id=candidate.id,
@@ -124,4 +165,5 @@ class RoutingGateway:
                         checked_at=now(),
                     )
                 )
+                await self.models.session.commit()
         raise last_error or SafeError("NO_ACTIVE_MODEL")
