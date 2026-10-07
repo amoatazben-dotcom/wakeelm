@@ -82,3 +82,67 @@ class SafeHTTP:
             raise SafeError("TIMEOUT") from None
         except aiohttp.ClientError:
             raise SafeError("OFFLINE") from None
+
+    async def stream(self, url, headers, payload):
+        """Bounded SSE transport using the same pinned public DNS as JSON requests."""
+        await public_addresses(url)
+        connector = aiohttp.TCPConnector(resolver=PinnedResolver(), use_dns_cache=False)
+        try:
+            async with aiohttp.ClientSession(
+                connector=connector,
+                trust_env=False,
+                auto_decompress=False,
+                timeout=aiohttp.ClientTimeout(total=180, connect=5, sock_read=30),
+                read_bufsize=65536,
+            ) as client:
+                async with client.post(
+                    url,
+                    headers={"Accept-Encoding": "identity", **headers},
+                    json=payload,
+                    allow_redirects=False,
+                ) as response:
+                    if response.status >= 300:
+                        raise SafeError(
+                            {
+                                401: "AUTH_FAILED",
+                                403: "AUTH_FAILED",
+                                404: "UNSUPPORTED",
+                                429: "RATE_LIMITED",
+                            }.get(response.status, "OFFLINE"),
+                            response.status,
+                        )
+                    if response.headers.get(
+                        "Content-Encoding", "identity"
+                    ) != "identity" or not response.headers.get("Content-Type", "").startswith(
+                        "text/event-stream"
+                    ):
+                        raise SafeError("INVALID_RESPONSE")
+                    size, data = 0, []
+                    async for line in response.content:
+                        size += len(line)
+                        if size > self.max_bytes or len(line) > 65536:
+                            raise SafeError("INVALID_RESPONSE")
+                        try:
+                            line = line.decode("utf-8").rstrip("\r\n")
+                        except UnicodeError:
+                            raise SafeError("INVALID_RESPONSE") from None
+                        if not line and data:
+                            value = "\n".join(data)
+                            data.clear()
+                            if value == "[DONE]":
+                                return
+                            try:
+                                item = json.loads(value)
+                                if not isinstance(item, dict):
+                                    raise ValueError()
+                            except (ValueError, RecursionError):
+                                raise SafeError("INVALID_RESPONSE") from None
+                            yield item
+                        elif line.startswith("data:"):
+                            data.append(line[5:].lstrip(" "))
+                    # A missing DONE sentinel is a truncated generation, never success.
+                    raise SafeError("INVALID_RESPONSE")
+        except TimeoutError:
+            raise SafeError("TIMEOUT") from None
+        except (aiohttp.ClientError, ValueError):
+            raise SafeError("OFFLINE") from None
