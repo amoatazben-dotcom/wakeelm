@@ -332,8 +332,8 @@ class ControlledGitService:
         await self.validate_tree(branch)
         await self._run("checkout", branch)
 
-    async def diff(self):
-        return (await self._run("diff", "--no-ext-diff", "--no-textconv", "HEAD", "--")).decode(
+    async def diff(self, base="HEAD"):
+        return (await self._run("diff", "--no-ext-diff", "--no-textconv", ref(base), "--")).decode(
             "utf-8", errors="replace"
         )
 

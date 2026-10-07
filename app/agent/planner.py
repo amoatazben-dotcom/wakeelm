@@ -1,5 +1,3 @@
-import json
-
 from pydantic import ValidationError
 
 from app.agent.schemas import AgentPlan
@@ -27,7 +25,7 @@ class AgentPlanner:
             for f in await self.workspaces.files(job.workspace_id)
         ]
         data = {
-            "request": request,
+            "request": {"origin": "USER_REQUEST", "text": request},
             "mode": job.mode,
             "context": context.render(),
             "files": files[:100],
@@ -35,12 +33,18 @@ class AgentPlanner:
             "plan_schema": AgentPlan.model_json_schema(),
             "tools": registry.schemas(),
         }
-        prompt = json.dumps(data, ensure_ascii=False)
+        from app.integrations.sanitizer import ExternalToolOutputSanitizer
+
+        sanitizer = registry.mcp.sanitizer() if registry.mcp else ExternalToolOutputSanitizer()
+        prompt = sanitizer.clean(data)
         if token_estimate(prompt) > max(
             1024, (model.metadata_json or {}).get("context_length", 16000) - 3000
         ):
             raise SafeError("CONTEXT_TOO_LARGE")
-        messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]
+        messages = [
+            {"role": "system", "content": "SYSTEM_POLICY\n" + SYSTEM},
+            {"role": "user", "content": prompt},
+        ]
         supported = (model.capabilities_json or {}).get("tool_calling", {}).get(
             "state"
         ) == "SUPPORTED"

@@ -33,6 +33,25 @@ async def show_job(event, user, agents, ident):
         limit=job.max_steps,
         calls=job.tool_calls_count,
     )
+    if job.failure_code in {
+        "SCOPE_REQUIRED",
+        "AUTH_REQUIRED",
+        "AUTH_FAILED",
+    } and job.result_json.get("auth_server_id"):
+        buttons.append([("agent.resume_auth", f"job:resume_auth:{job.id}")])
+        buttons.append(
+            [
+                ("mcp.grant", "mc:oauth:" + job.result_json["auth_server_id"]),
+                ("common.cancel", "menu:home"),
+            ]
+        )
+    if job.failure_code == "STALE_REPOSITORY":
+        from app.integrations.ownership import IntegrationOwnership
+
+        _, repo, _ = await IntegrationOwnership(agents.w.session, user.id).repository_workspace(
+            job.workspace_id
+        )
+        buttons.append([("github.refresh_workspace", "gh:import:" + repo.id)])
     if job.failure_code:
         text += "\n" + tr(user.language, "error." + job.failure_code)
     if job.result_json.get("answer_encrypted"):
@@ -56,6 +75,8 @@ async def show_job(event, user, agents, ident):
             + json.dumps(approval.arguments_summary, ensure_ascii=False)
         )
         buttons.append([("agent.approval_details", f"job:details:{approval.id}")])
+        if approval.tool_name in {"git.commit", "git.push_branch", "github.create_pull_request"}:
+            buttons.append([("agent.diff", f"job:diff:{approval.id}")])
         buttons.append(
             [
                 ("agent.approve", f"job:approve:{approval.id}"),
@@ -162,6 +183,24 @@ async def callback(event, user, agents, state: FSMContext):
             keyboard(user.language, [[("common.back", f"ws:view:{ident}")]]),
         )
     elif prefix == "job":
+        if action == "resume_auth":
+            await agents.resume_after_auth(ident)
+            await show_job(event, user, agents, ident)
+            return
+        if action == "diff":
+            from app.github.repositories import RepositoryService
+            from app.integrations.sanitizer import ExternalToolOutputSanitizer
+
+            approval = await agents.owned.approval(ident)
+            job = await agents.owned.job(approval.job_id)
+            link, _, _, git = await RepositoryService(agents.w).context(job.workspace_id)
+            diff = ExternalToolOutputSanitizer(agents.w.settings.git_max_output_bytes).clean(
+                await git.diff(link.base_commit_sha)
+            )
+            await event.message.answer_document(
+                BufferedInputFile(diff.encode(), "repository-changes.diff")
+            )
+            return
         if action == "details":
             approval = await agents.owned.approval(ident)
             await event.message.answer_document(

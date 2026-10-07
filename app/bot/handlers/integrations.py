@@ -19,6 +19,7 @@ class IntegrationInput(StatesGroup):
     installation = State()
     repo_search = State()
     mcp_name = State()
+    mcp_transport = State()
     mcp_url = State()
     mcp_token = State()
     mcp_scopes = State()
@@ -121,6 +122,7 @@ async def server_detail(event, user, mcp, ident):
                 [("mcp.prompts", "mc:prompts:" + ident), ("mcp.permissions", "mc:tools:" + ident)],
                 [("mcp.refresh", "mc:refresh:" + ident), ("mcp.oauth", "mc:oauth:" + ident)],
                 [("mcp.disable", "mc:disable:" + ident), ("mcp.remove", "mc:remove:" + ident)],
+                [("mcp.templates", "mc:templates:" + ident)],
                 [("mcp.task", "mc:task:" + ident), ("mcp.token", "mc:token:" + ident)],
                 [("common.back", "mc:list:0")],
             ],
@@ -386,6 +388,21 @@ async def callback(event, user, github, mcp, integration_jobs, agents, state: FS
             await state.set_state(IntegrationInput.mcp_token)
             await state.update_data(mcp_server=ident)
             await say(event, tr(user.language, "mcp.token_prompt"), back(user.language))
+        elif action == "transport":
+            if await state.get_state() != IntegrationInput.mcp_transport.state:
+                raise SafeError("INVALID_INPUT")
+            await state.update_data(mcp_transport="streamable_http")
+            await state.set_state(IntegrationInput.mcp_url)
+            await say(event, tr(user.language, "mcp.url_prompt"))
+        elif action == "templates":
+            server = await mcp.owned.server(ident, False)
+            await say(
+                event,
+                json.dumps(
+                    server.capabilities_json.get("resource_templates", []), ensure_ascii=False
+                )[:3500],
+                keyboard(user.language, [[("common.back", "mc:server:" + ident)]]),
+            )
         elif action == "oauth":
             await mcp.owned.server(ident, False)
             await state.set_state(IntegrationInput.mcp_scopes)
@@ -536,10 +553,17 @@ async def input_message(event, user, github, mcp, integration_jobs, agents, stat
         if not text or len(text) > 100:
             raise SafeError("INVALID_INPUT")
         await state.update_data(mcp_name=text)
-        await state.set_state(IntegrationInput.mcp_url)
-        await say(event, tr(user.language, "mcp.url_prompt"))
+        await state.set_state(IntegrationInput.mcp_transport)
+        await say(
+            event,
+            tr(user.language, "mcp.transport_prompt"),
+            keyboard(
+                user.language,
+                [[("mcp.streamable", "mc:transport:0")], [("common.cancel", "menu:home")]],
+            ),
+        )
     elif current == IntegrationInput.mcp_url.state:
-        server = await mcp.add(data["mcp_name"], text)
+        server = await mcp.add(data["mcp_name"], text, data.get("mcp_transport", "streamable_http"))
         await state.clear()
         await queued(
             event,

@@ -41,7 +41,7 @@ from app.integrations.schemas import (
     PushInput,
     SHAInput,
 )
-from app.mcp.adapter import MCPInputSchema, MCPToolAdapter
+from app.mcp.adapter import MCPInputSchema, MCPToolAdapter, tool_namespace
 from app.mcp.service import MCPService
 from app.sandbox.commands import ValidationCommandDetector
 from app.services.audit_service import audit
@@ -258,7 +258,7 @@ class ToolRegistry:
         for tool, server in rows:
             if not router.relevant(request, server, tool, selected):
                 continue
-            name = "mcp." + tool.id.replace("-", "")
+            name = tool_namespace(tool)
             adapter = MCPToolAdapter(self.mcp, tool, server)
             risk = Risk(tool.risk_level)
             self.specs[name] = ToolSpec(
@@ -294,6 +294,12 @@ class ToolRegistry:
         ]
 
     def normalize(self, request, resolve=True):
+        if request.tool_name.startswith("mcp."):
+            legacy = request.tool_name.removeprefix("mcp.")
+            for name, adapter in self.external.items():
+                if legacy == adapter.tool.id.replace("-", ""):
+                    request = request.model_copy(update={"tool_name": name})
+                    break
         spec = self.specs.get(request.tool_name)
         if spec is None:
             raise SafeError("POLICY_DENIED")
@@ -318,6 +324,13 @@ class ToolRegistry:
     async def policy(self, spec, args):
         if spec.name in self.external:
             adapter = self.external[spec.name]
+            audit(
+                self.workspaces.session,
+                self.workspaces.user_id,
+                "MCP_TOOL_CALL_REQUESTED",
+                "mcp_tool",
+                adapter.tool.id,
+            )
             required, risk, bound, summary = await adapter.policy(self.job, args)
             if required:
                 audit(
@@ -338,6 +351,10 @@ class ToolRegistry:
             "github.create_pr_comment",
         }:
             link, repo, connection, git, service = await self.repositories.writable(self.job)
+            if spec.name == "github.create_pull_request" and not args["body"].startswith(
+                "## Summary\n"
+            ):
+                args["body"] = await self.repositories.pr_body(self.job, args["body"])
             summary = {
                 "repository": repo.full_name,
                 "branch": link.working_branch,
@@ -418,12 +435,9 @@ class ToolRegistry:
                 args["command_id"], await self.workspaces.manifest(self.job.workspace_id)
             )
             summary["network"] = "DISABLED"
-        approved = await self.approvals.approved(self.job, spec.name, args)
-        if required and not approved:
-            await self.approvals.request(self.job, spec.name, args, risk, summary)
-            await self.workspaces.session.commit()
-            raise ApprovalPending()
-        return approved
+        return await ToolPolicyEngine.approval(
+            self.approvals, self.job, spec.name, args, risk, summary, required
+        )
 
     async def execute(self, request):
         await self.hydrate()
@@ -435,6 +449,19 @@ class ToolRegistry:
             approved = await self.policy(spec, args)
         except SafeError as error:
             if request.tool_name.startswith("mcp."):
+                adapter = self.external.get(request.tool_name) or next(
+                    (
+                        v
+                        for v in self.external.values()
+                        if request.tool_name == "mcp." + v.tool.id.replace("-", "")
+                    ),
+                    None,
+                )
+                if adapter and error.code in {"SCOPE_REQUIRED", "AUTH_REQUIRED", "AUTH_FAILED"}:
+                    self.job.result_json = {
+                        **self.job.result_json,
+                        "auth_server_id": adapter.server.id,
+                    }
                 audit(
                     self.workspaces.session,
                     self.workspaces.user_id,
@@ -490,6 +517,34 @@ class ToolRegistry:
                 }
             return result
         except SafeError as error:
+            if spec.name in {
+                "git.push_branch",
+                "github.create_pull_request",
+                "github.create_issue_comment",
+                "github.create_pr_comment",
+            }:
+                audit(
+                    self.workspaces.session,
+                    self.workspaces.user_id,
+                    "GITHUB_REMOTE_WRITE_FAILED",
+                    "agent_job",
+                    self.job.id,
+                    status=error.code,
+                )
+            if spec.name in self.external:
+                audit(
+                    self.workspaces.session,
+                    self.workspaces.user_id,
+                    "MCP_TOOL_CALL_DENIED",
+                    "mcp_tool",
+                    self.external[spec.name].tool.id,
+                    status=error.code,
+                )
+                if error.code in {"SCOPE_REQUIRED", "AUTH_REQUIRED", "AUTH_FAILED"}:
+                    self.job.result_json = {
+                        **self.job.result_json,
+                        "auth_server_id": self.external[spec.name].server.id,
+                    }
             log.status = "FAILED"
             log.output_summary = {"error_code": error.code}
             raise

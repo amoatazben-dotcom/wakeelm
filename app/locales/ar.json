@@ -345,5 +345,15 @@
   "audit.MCP_TOOL_CALL_EXECUTED": "تنفيذ أداة MCP",
   "audit.MCP_TOOL_CALL_DENIED": "رفض أداة MCP",
   "audit.MCP_RESOURCE_READ": "قراءة مورد MCP",
-  "audit.MCP_PROMPT_LOADED": "تحميل قالب MCP"
+  "audit.MCP_PROMPT_LOADED": "تحميل قالب MCP",
+  "mcp.grant": "🔐 منح الصلاحية",
+  "mcp.templates": "قوالب الموارد",
+  "mcp.transport_prompt": "اختر نقل MCP. المسموح حاليًا Streamable HTTP للخوادم البعيدة.",
+  "mcp.streamable": "Streamable HTTP",
+  "audit.MCP_SERVER_AUTH_FAILED": "فشل مصادقة MCP",
+  "audit.MCP_TOOL_CALL_REQUESTED": "طلب تنفيذ أداة MCP",
+  "audit.GITHUB_REMOTE_WRITE_FAILED": "فشل كتابة GitHub البعيدة",
+  "github.refresh_workspace": "استيراد نسخة أحدث للمراجعة",
+  "agent.resume_auth": "متابعة المهمة بعد منح الصلاحية",
+  "audit.AGENT_AUTH_RESUMED": "استئناف المهمة بعد المصادقة"
 }

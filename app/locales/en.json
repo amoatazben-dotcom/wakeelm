@@ -345,5 +345,15 @@
   "audit.MCP_TOOL_CALL_EXECUTED": "Mcp tool call executed",
   "audit.MCP_TOOL_CALL_DENIED": "Mcp tool call denied",
   "audit.MCP_RESOURCE_READ": "Mcp resource read",
-  "audit.MCP_PROMPT_LOADED": "Mcp prompt loaded"
+  "audit.MCP_PROMPT_LOADED": "Mcp prompt loaded",
+  "mcp.grant": "Grant additional permission",
+  "mcp.templates": "Resource templates",
+  "mcp.transport_prompt": "Choose the MCP transport. Only remote Streamable HTTP is permitted.",
+  "mcp.streamable": "Streamable HTTP",
+  "audit.MCP_SERVER_AUTH_FAILED": "MCP authentication failed",
+  "audit.MCP_TOOL_CALL_REQUESTED": "MCP tool call requested",
+  "audit.GITHUB_REMOTE_WRITE_FAILED": "GitHub remote write failed",
+  "github.refresh_workspace": "Import current base for review",
+  "agent.resume_auth": "Resume after granting permission",
+  "audit.AGENT_AUTH_RESUMED": "Agent resumed after authentication"
 }

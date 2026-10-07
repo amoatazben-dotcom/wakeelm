@@ -225,6 +225,28 @@ class RepositoryService:
         audit(self.w.session, self.w.user_id, "GIT_BRANCH_PUSHED", "workspace", job.workspace_id)
         return {"repository": repo.full_name, "branch": branch, "sha": expected_head}
 
+    async def pr_body(self, job, summary):
+        link, _, _, _ = await self.context(job.workspace_id)
+        runs = list(
+            await self.w.session.scalars(
+                select(ValidationRun)
+                .where(ValidationRun.job_id == job.id)
+                .order_by(ValidationRun.created_at.desc())
+                .limit(5)
+            )
+        )
+        files = link.metadata_json.get("committed_files", [])
+        validation = "\n".join("- " + run.status for run in runs) or "- NOT_RUN"
+        return (
+            "## Summary\n"
+            + summary[:12000]
+            + "\n\n## Changes\n"
+            + "\n".join("- `" + path.replace("`", "") + "`" for path in files)
+            + "\n\n## Validation\n"
+            + validation
+            + "\n\n## Risks / Notes\n- Agent branch; human review required. No automatic merge or deployment."
+        )
+
     async def create_pr(self, job, data, *, approved=False):
         if not approved:
             raise SafeError("APPROVAL_REQUIRED")

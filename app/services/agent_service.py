@@ -198,3 +198,26 @@ class AgentService:
         job.status = "QUEUED"
         job.completed_at = None
         return job
+
+    async def resume_after_auth(self, ident):
+        job = await self.owned.job(ident, True)
+        if (
+            job.kind != "AGENT"
+            or job.status != "FAILED"
+            or job.failure_code not in {"SCOPE_REQUIRED", "AUTH_REQUIRED", "AUTH_FAILED"}
+        ):
+            raise SafeError("JOB_FINISHED")
+        from app.integrations.ownership import IntegrationOwnership
+
+        await IntegrationOwnership(self.w.session, self.w.user_id).server(
+            job.result_json.get("auth_server_id", "")
+        )
+        await self.w.owned(job.workspace_id, True)
+        await self.w.idle(job.workspace_id)
+        if job.current_step >= job.max_steps:
+            raise SafeError("AGENT_LIMIT")
+        job.status = "QUEUED"
+        job.failure_code = job.failure_message_safe = None
+        job.completed_at = None
+        audit(self.w.session, self.w.user_id, "AGENT_AUTH_RESUMED", "agent_job", job.id)
+        return job
