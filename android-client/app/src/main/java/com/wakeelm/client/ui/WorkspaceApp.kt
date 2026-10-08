@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.*
@@ -289,9 +290,9 @@ private val localizedIds = mapOf(
     fun close() { token = ""; headers = ""; dismiss() }
     AlertDialog(onDismissRequest = { if(!busy) close() }, title = { Text(stringResource(R.string.add_provider)) }, text = {
         Column(Modifier.heightIn(max = 450.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
-            OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.name)) })
+            OutlinedTextField(name, { name = it }, modifier = Modifier.testTag("provider-name"), label = { Text(stringResource(R.string.name)) })
             OutlinedTextField(url, { url = it }, label = { Text(stringResource(R.string.base_url)) }, singleLine = true)
-            OutlinedTextField(token, { token = it }, label = { Text(stringResource(R.string.api_token)) }, visualTransformation = if(visible) VisualTransformation.None else PasswordVisualTransformation(), singleLine = true)
+            OutlinedTextField(token, { token = it }, modifier = Modifier.testTag("provider-token"), label = { Text(stringResource(R.string.api_token)) }, visualTransformation = if(visible) VisualTransformation.None else PasswordVisualTransformation(), singleLine = true)
             Row { TextButton(onClick = { visible = !visible }) { Text(stringResource(if(visible) R.string.hide else R.string.show)) }; TextButton(onClick = { scope.launch { token = clipboard.getClipEntry()?.clipData?.getItemAt(0)?.text?.toString().orEmpty() } }) { Text(stringResource(R.string.paste)) } }
             OutlinedTextField(headers, { headers = it }, label = { Text(stringResource(R.string.headers)) })
             error?.let { Text(localized(it), color = MaterialTheme.colorScheme.error) }

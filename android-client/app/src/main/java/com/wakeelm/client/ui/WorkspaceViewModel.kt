@@ -49,19 +49,22 @@ data class WorkspaceState(val restoring: Boolean = true, val signedIn: Boolean =
     fun deleteProvider(id: Long) = operation { providersRepo.delete(id) }
     fun choose(id: Long) = operation { val routing = modelsRepo.select(id); mutable.update { it.copy(routing = routing) } }
     fun route(policy: String, fallback: Boolean) = operation { val routing = modelsRepo.route(Routing(policy, fallback)); mutable.update { it.copy(routing = routing) } }
-    fun newConversation() = operation { open(conversationsRepo.new()) }
+    fun newConversation() = operation { loadConversation(conversationsRepo.new()) }
     fun open(id: String) {
         if (state.value.generating) return
+        operation { loadConversation(id) }
+    }
+    private suspend fun loadConversation(id: String) {
         observing?.cancel()
         mutable.update { it.copy(conversationId = id, messages = emptyList(), fallback = false) }
         observing = viewModelScope.launch { conversationsRepo.observe(id).collect { rows -> mutable.update { it.copy(messages = rows) } } }
-        operation { conversationsRepo.refreshMessages(id) }
+        conversationsRepo.refreshMessages(id)
     }
     fun sendMessage(text: String, requestId: String? = null) {
         val id = state.value.conversationId ?: return
-        if (state.value.generating) return
+        if (state.value.generating || state.value.busy || !state.value.online) return
+        mutable.update { it.copy(generating = true, error = null, fallback = false) }
         generation = viewModelScope.launch {
-            mutable.update { it.copy(generating = true, error = null, fallback = false) }
             try { send(id, text, requestId).collect { event -> if (event is StreamEvent.Fallback) mutable.update { it.copy(fallback = true) } } }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) { mutable.update { it.copy(error = e.safeCode()) } }
