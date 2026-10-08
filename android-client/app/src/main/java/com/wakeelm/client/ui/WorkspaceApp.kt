@@ -216,7 +216,7 @@ private val localizedIds = mapOf(
 }
 @Composable private fun Home(vm: WorkspaceViewModel, state: WorkspaceState, go: (String) -> Unit) {
     val models by vm.models.collectAsStateWithLifecycle()
-    Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(stringResource(R.string.welcome), style = MaterialTheme.typography.headlineMedium)
         ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(20.dp)) { Text(stringResource(R.string.current_model)); Text(models.find { it.id == state.routing.active_model_id }?.name ?: localized("no_active_model"), style = MaterialTheme.typography.titleLarge); Text(localized(state.routing.policy)) } }
         Button(onClick = { vm.newConversation(); go("chat") }, enabled = state.online && !state.busy) { Text(stringResource(R.string.new_chat)) }
