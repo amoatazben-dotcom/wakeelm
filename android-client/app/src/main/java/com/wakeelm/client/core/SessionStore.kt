@@ -17,6 +17,7 @@ import javax.inject.Singleton
 
 interface SessionStorage { fun read(): Tokens?; fun write(tokens: Tokens); fun rotate(expected: String, tokens: Tokens): Boolean; fun clear(); fun clearIf(expected: String) }
 
+@SuppressLint("UseKtx") // Explicit commit checks disk failure before an account change.
 @Singleton class SessionStore @Inject constructor(@ApplicationContext context: Context): SessionStorage {
     private val prefs = context.getSharedPreferences("secure_session", Context.MODE_PRIVATE)
     private val alias = "wakeelm.session.v1"
@@ -50,5 +51,5 @@ interface SessionStorage { fun read(): Tokens?; fun write(tokens: Tokens); fun r
     }
     @Synchronized override fun clearIf(expected: String) { if(read()?.refresh_token == expected) clear() }
     @SuppressLint("ApplySharedPref") // Durable erasure must complete before another account loads.
-    @Synchronized override fun clear() { prefs.edit().clear().commit() }
+    @Synchronized override fun clear() { check(prefs.edit().clear().commit()) }
 }
