@@ -77,7 +77,7 @@ fun ModelEntity.domain() = AiModel(id, providerId, name, externalId, status, pri
             }
             if (!finished) throw ApiFailure("INTERRUPTED")
         } catch (e: CancellationException) {
-            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { dao.messages(listOf(assistant.copy(sealedContent = cipher.seal(content), status = "CANCELLED"))) }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { dao.messages(listOf(user.copy(status = if(accepted) "COMPLETED" else "CANCELLED"), assistant.copy(sealedContent = cipher.seal(content), status = "CANCELLED"))) }
             throw e
         } catch (e: Exception) {
             dao.messages(listOf(user.copy(status = if(accepted) "COMPLETED" else "FAILED"), assistant.copy(sealedContent = cipher.seal(content), status = "FAILED")))
