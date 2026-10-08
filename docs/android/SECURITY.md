@@ -1,0 +1,11 @@
+# Security
+
+Telegram `/login` works only through the existing private-chat and active-user middleware. It returns a high-entropy pairing code privately with forwarding protection. The code expires after five minutes and is consumed once by Redis GETDEL. Android exchange binds to the existing Telegram user; clients cannot supply a user ID.
+
+Opaque access tokens expire after 15 minutes, refresh tokens after 30 days. Redis stores hashes, user/family records, and replay lineage rather than token plaintext. Refresh consumes the previous token atomically; reuse revokes the family. Existing-family issuance never recreates a revoked family. Every account API verifies token, family, active user and user-level rate limit; every provider/model/conversation lookup is owned. Logout revokes the entire family. Admin OIDC/cookies/RBAC are unchanged.
+
+Android stores AES-GCM-encrypted access/refresh credentials in private preferences with a non-exportable Android Keystore key. Corrupt credentials fail closed. A separate Keystore key seals Room message content. Backups and cleartext traffic are disabled. The secure preference value contains neither plaintext token. Cache/preferences are cleared on logout/account change. Provider credentials exist transiently in masked form fields and a request DTO; they are not saved across activity restoration and are cleared on success/dismissal. Custom headers receive the backend's existing validation/encryption.
+
+Backend conversation bodies use the platform SecretManager encryption. API responses never return provider keys or headers. Client validation responses deliberately omit FastAPI/Pydantic input fields, which otherwise can echo submitted credentials. Responses are no-store; no auth token is put in a URL. Health returns only status/protocol, not connection secrets.
+
+No production secret, release signing key, or personal token belongs in the source tree. No root/jailbreak detection or certificate pinning is claimed. Keystore protects data at rest within Android's trust model; an unlocked compromised process/device can still read what the app can read. End-user pairing/live API verification must be performed before production client rollout.

@@ -18,3 +18,12 @@ admin-web/playwright-report/
 *.enc
 
 test-results/
+
+# Android local tools and outputs
+.gradle/
+local.properties
+*.jks
+*.keystore
+
+.kotlin/
+.idea/

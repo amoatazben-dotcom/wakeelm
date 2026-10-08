@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 from app.core.exceptions import SafeError
@@ -169,6 +170,9 @@ class RoutingGateway:
                     else __import__("decimal").Decimal("0.10"),
                 )
                 return result
+            except asyncio.CancelledError:
+                ledger.status = "CANCELLED"
+                raise
             except SafeError as exc:
                 error = exc
                 ledger.status = "FAILED" if invoked else "REJECTED"
@@ -188,7 +192,7 @@ class RoutingGateway:
             finally:
                 metric("provider_latency", time.monotonic() - started, observe=True)
                 ledger.duration_ms = int((time.monotonic() - started) * 1000)
-                if record_health:
+                if record_health and not asyncio.current_task().cancelling():
                     self.models.session.add(
                         ModelHealthCheck(
                             model_id=candidate.id,

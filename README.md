@@ -68,3 +68,37 @@ See [GitHub setup](docs/GITHUB_APP.md), [repository workflow](docs/REPOSITORY_AG
 Tenant-scoped model routing and bounded fallback, encrypted memory, role-restricted specialist graphs, durable usage reservations/quotas, shared circuits, feature flags/emergency stops and an OIDC/MFA/RBAC admin API are implemented. The TypeScript/React dashboard supports Arabic RTL and English. Build it with `npm ci --prefix admin-web` and `npm run build --prefix admin-web`; FastAPI serves `/admin-web/`. OIDC is required to access operational data.
 
 See [router](docs/MODEL_ROUTER.md), [specialists](docs/MULTI_AGENT.md), [memory](docs/MEMORY.md), [quotas](docs/QUOTAS.md), [admin](docs/ADMIN_DASHBOARD.md), [backups](docs/BACKUP_RESTORE.md) and [release process](docs/RELEASE_PROCESS.md). Railway deployment remains deferred by instruction; local tests do not assert production readiness. Container scan findings and live deployment/identity gates are tracked in release evidence and the final beta checklist.
+
+## Native Android client — stages 1–2
+
+The canonical Kotlin/Compose client is in `android-client/`. It connects to the
+same platform account/provider gateway as Telegram. Projects/tasks are placeholders
+for later Android stages. Backend compatibility is in `/api/v1`; apply
+`alembic upgrade head` and run the backend branch before client end-to-end use.
+Send `/login` privately to the bot, then paste the five-minute single-use code
+into Android. Provider keys are registered through the backend, never bundled.
+
+Use a full **JDK 17**, Android SDK 37.2/build tools 36 and Android Studio supporting
+AGP 9.4.1. `minSdk=26`, `compileSdk=37.2`, `targetSdk=37`. From the repo root:
+
+```sh
+cd android-client
+chmod +x gradlew
+./gradlew :app:lintDebug :app:testDebugUnitTest :app:assembleDebug
+./gradlew :app:assembleDebugAndroidTest
+# With an Android 8+ device/emulator:
+./gradlew :app:connectedDebugAndroidTest
+# Alternate HTTPS backend (trailing slash required):
+./gradlew :app:installDebug -PbackendUrl=https://your-backend.example/
+```
+
+Default API URL is the platform's public Railway hostname, not an embedded
+credential. That deployed main backend must receive compatibility routes before
+this branch's login/chat is usable against it. Arabic/English and system/light/dark
+are switchable in More. Cached views work offline; AI generation needs a connection.
+See [Android architecture](docs/android/ARCHITECTURE.md),
+[API contract](docs/android/API_CONTRACT.md), [security](docs/android/SECURITY.md)
+and [verification report](docs/android/STAGE_1_2_REPORT.md).
+
+**FINAL APK NOT GENERATED YET.** Only debug builds are permitted for validation;
+no final/release APK, AAB, signing or release publication in these stages.

@@ -86,3 +86,43 @@ async def test_http_json(mock_server):
     assert (await SafeHTTP().request("GET", mock_server + "/models", {}))["data"][0][
         "id"
     ] == "mock-model"
+
+
+@pytest.mark.parametrize(
+    "body,ok",
+    [
+        ('data: {"choices":[{"delta":{"content":"Hi"}}]}\n\ndata: [DONE]\n\n', True),
+        ('data: {"choices":[]}\n\n', False),
+        ("data: not-json\n\ndata: [DONE]\n\n", False),
+    ],
+)
+async def test_bounded_sse_transport(monkeypatch, body, ok):
+    async def allow(url):
+        return {"127.0.0.1"}
+
+    monkeypatch.setattr("app.providers.http.public_addresses", allow)
+
+    async def handle(request):
+        return web.Response(text=body, content_type="text/event-stream")
+
+    app = web.Application()
+    app.router.add_post("/stream", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    port = site._server.sockets[0].getsockname()[1]
+    try:
+        if ok:
+            items = [
+                item async for item in SafeHTTP().stream(f"http://127.0.0.1:{port}/stream", {}, {})
+            ]
+            assert items[0]["choices"][0]["delta"]["content"] == "Hi"
+        else:
+            with pytest.raises(SafeError, match="INVALID_RESPONSE"):
+                _ = [
+                    item
+                    async for item in SafeHTTP().stream(f"http://127.0.0.1:{port}/stream", {}, {})
+                ]
+    finally:
+        await runner.cleanup()
