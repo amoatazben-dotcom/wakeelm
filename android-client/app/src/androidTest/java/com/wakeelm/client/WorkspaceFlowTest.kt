@@ -52,7 +52,7 @@ import org.junit.runner.RunWith
         try {
             compose.setContent { WorkspaceApp(vm) }
             compose.waitUntil(20000) { compose.onAllNodesWithText("مزودات API").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText("مزودات API").performClick()
+            compose.onNodeWithText("مزودات API").performScrollTo().performClick()
             compose.onNodeWithText("إضافة مزود").performClick()
             compose.waitUntil(60000) { compose.onAllNodesWithTag("provider-name").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithTag("provider-name").performTextInput("Added")
@@ -61,12 +61,12 @@ import org.junit.runner.RunWith
             compose.waitUntil(20000) { compose.onAllNodesWithText("Added").fetchSemanticsNodes().isNotEmpty() }
             assertFalse(runBlocking { db.cache().providers().first().toString() }.contains("temporary-test-key"))
             compose.onNodeWithText("الرئيسية").performClick()
-            compose.onNodeWithText("النماذج").performClick()
+            compose.onNodeWithText("النماذج").performScrollTo().performClick()
             compose.onNodeWithText("اختيار").performClick()
             compose.waitUntil(20000) { compose.onAllNodesWithText("مختار").fetchSemanticsNodes().isNotEmpty() }
             assertEquals(7L, runBlocking { prefs.values.first() }.modelId)
             compose.onNodeWithText("الرئيسية").performClick()
-            compose.onNodeWithText("محادثة جديدة").performClick()
+            compose.onNodeWithText("محادثة جديدة").performScrollTo().performClick()
             compose.waitUntil(20000) { vm.state.value.conversationId != null && !vm.state.value.busy }
             compose.onNodeWithText("اكتب رسالتك…").performTextInput("هاي")
             compose.onNodeWithText("إرسال").performClick()
