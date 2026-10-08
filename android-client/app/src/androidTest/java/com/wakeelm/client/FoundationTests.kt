@@ -97,12 +97,18 @@ import org.junit.runner.RunWith
     @Test fun recovering_same_request_keeps_one_message_pair() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = Room.inMemoryDatabaseBuilder(context, ClientDatabase::class.java).build()
+        val cipher = CacheCipher()
+        db.cache().messages(listOf(
+            MessageEntity("server-user","conversation","same-request","user",cipher.seal("question"),"COMPLETED",1),
+            MessageEntity("server-answer","conversation","same-request","assistant",cipher.seal("answer"),"COMPLETED",2),
+        ))
         val stream = object: ChatStreamClient { override fun stream(input: SendInput) = kotlinx.coroutines.flow.flow<StreamEvent> {
-            emit(StreamEvent.Started("server-answer",1)); emit(StreamEvent.Delta("answer")); emit(StreamEvent.Done(MessageStatus.COMPLETED))
+            emit(StreamEvent.Snapshot(MessageDto("server-answer","conversation","same-request","assistant","answer","COMPLETED")))
+            emit(StreamEvent.Done(MessageStatus.COMPLETED))
         } }
-        val repository = com.wakeelm.client.data.ChatRepository(stream,db.cache(),CacheCipher())
+        val repository = com.wakeelm.client.data.ChatRepository(stream,db.cache(),cipher)
         repeat(2) { repository.send("conversation","question","same-request").collect { } }
-        assertEquals(2,db.cache().messages("conversation").first().size)
+        assertEquals(listOf("server-user","server-answer"),db.cache().messages("conversation").first().map { it.id })
         assertTrue(db.cache().messages("conversation").first().all { it.status == "COMPLETED" })
         db.close()
     }

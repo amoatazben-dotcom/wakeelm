@@ -54,8 +54,9 @@ import org.junit.runner.RunWith
             compose.waitUntil(20000) { compose.onAllNodesWithText("مزودات API").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("مزودات API").performClick()
             compose.onNodeWithText("إضافة مزود").performClick()
-            compose.onNodeWithText("الاسم").performTextInput("Added")
-            compose.onNodeWithText("مفتاح API").performTextInput("temporary-test-key")
+            compose.waitUntil(60000) { compose.onAllNodesWithTag("provider-name").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("provider-name").performTextInput("Added")
+            compose.onNodeWithTag("provider-token").performTextInput("temporary-test-key")
             compose.onNodeWithText("حفظ").performClick()
             compose.waitUntil(20000) { compose.onAllNodesWithText("Added").fetchSemanticsNodes().isNotEmpty() }
             assertFalse(runBlocking { db.cache().providers().first().toString() }.contains("temporary-test-key"))
@@ -66,7 +67,7 @@ import org.junit.runner.RunWith
             assertEquals(7L, runBlocking { prefs.values.first() }.modelId)
             compose.onNodeWithText("الرئيسية").performClick()
             compose.onNodeWithText("محادثة جديدة").performClick()
-            compose.waitUntil(20000) { vm.state.value.conversationId != null }
+            compose.waitUntil(20000) { vm.state.value.conversationId != null && !vm.state.value.busy }
             compose.onNodeWithText("اكتب رسالتك…").performTextInput("هاي")
             compose.onNodeWithText("إرسال").performClick()
             compose.waitUntil(20000) { compose.onAllNodesWithText("مرحبا من النموذج").fetchSemanticsNodes().isNotEmpty() }
@@ -76,6 +77,9 @@ import org.junit.runner.RunWith
             compose.waitUntil(10000) { compose.onAllNodesWithText("Home").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Home").assertExists()
             assertEquals("en",runBlocking { prefs.values.first() }.language)
+        } catch (error: Throwable) {
+            compose.onRoot(useUnmergedTree = true).printToLog("WakeelmUiFailure")
+            throw error
         } finally {
             vm.viewModelScope.cancel(); session.clear(); db.close()
             runBlocking { prefs.language("ar"); prefs.tab("home") }
